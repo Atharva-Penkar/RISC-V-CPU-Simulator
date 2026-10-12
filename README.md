@@ -1,7 +1,6 @@
 # RISC-V CPU Simulator
 
-An assembler and a **5-stage pipelined RISC-V (RV32I) CPU** simulator written in C++20, originally built for the
-Computer Organization and Architecture Laboratory (22CS02011).
+An assembler and a **5-stage pipelined RISC-V (RV32I) CPU** simulator written in C++20.
 
 - `rvasm` turns RV32I assembly into machine code and reports every error with its line and column.
 - `rvsim` runs a program on the pipeline, or on a single-cycle reference model (ISS), and prints the final
