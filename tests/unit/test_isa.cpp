@@ -47,6 +47,8 @@ void addIsaTests(Suite& suite) {
         expectEq(rv::encode(make("BGEU", 0, 3, 4, 20)), 0x0041FA63u);
         expectEq(rv::encode(make("JAL", 1, 0, 0, -72)), 0xFB9FF0EFu);
         expectEq(rv::encode(make("LUI", 7, 0, 0, static_cast<int32_t>(0x80000000u))), 0x800003B7u);
+        expectEq(rv::encode(make("ECALL", 0, 0, 0, 0)), 0x00000073u);
+        expectEq(rv::encode(make("EBREAK", 0, 0, 0, 0)), 0x00100073u);
     });
 
     suite.add("decode inverts encode for every instruction", [] {
@@ -54,7 +56,12 @@ void addIsaTests(Suite& suite) {
             rv::DecodedInst inst = make(spec.mnemonic, 5, 6, 7, 0);
             switch (rv::formatOf(spec.kind)) {
                 case rv::Format::R: inst.imm = 0; break;
-                case rv::Format::I: inst.imm = spec.kind == rv::Kind::Shift ? 13 : -77; inst.rs2 = {}; break;
+                case rv::Format::I:
+                    inst.rs2 = {};
+                    inst.imm = spec.kind == rv::Kind::Shift ? 13 : -77;
+                    if (spec.kind == rv::Kind::System)
+                        inst = make(spec.mnemonic, 0, 0, 0, 0);
+                    break;
                 case rv::Format::S: inst.imm = -77; inst.rd = {}; break;
                 case rv::Format::B: inst.imm = -78; inst.rd = {}; break;
                 case rv::Format::U: inst.imm = static_cast<int32_t>(0xABCDE000u); inst.rs1 = inst.rs2 = {}; break;
@@ -74,6 +81,8 @@ void addIsaTests(Suite& suite) {
         expect(!rv::decode(0x00000000u).has_value(), "all zero");
         expect(!rv::decode(0xFFFFFFFFu).has_value(), "all one");
         expect(!rv::decode(0x0000B003u).has_value(), "LD (RV64)");
+        expect(!rv::decode(0x00200073u).has_value(), "URET-like SYSTEM word");
+        expect(!rv::decode(0x000000F3u).has_value(), "ECALL with rd != 0");
     });
 
     suite.add("disassembly", [] {

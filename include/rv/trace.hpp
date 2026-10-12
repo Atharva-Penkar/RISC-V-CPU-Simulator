@@ -1,4 +1,4 @@
-// Observing a simulation: per-cycle pipeline trace, events and the final state dump.
+// Observing a simulation: per-cycle pipeline trace and the final state dump.
 #pragma once
 
 #include <cstddef>
@@ -16,30 +16,22 @@ public:
     virtual ~Tracer() = default;
     /*a new clock cycle (pipeline) or instruction (ISS) starts*/
     virtual void beginCycle(std::size_t /*cycle*/) {}
-    /*state of one pipeline register at the end of the cycle*/
+    /*state of one pipeline register at the end of the cycle, or the cycle's hazard events*/
     virtual void stage(std::string_view /*name*/, std::string_view /*description*/) {}
-    /*something the program did wrong, e.g. an invalid memory access*/
-    virtual void event(std::string_view /*message*/) {}
 };
 
-/*prints events, and with verbose also every cycle's pipeline state*/
+/*prints every cycle's pipeline state*/
 class TextTracer : public Tracer {
 public:
-    TextTracer(std::ostream& out, bool verbose) : out_(out), verbose_(verbose) {}
+    explicit TextTracer(std::ostream& out) : out_(out) {}
 
-    void beginCycle(std::size_t cycle) override {
-        if (verbose_)
-            out_ << "cycle " << cycle << '\n';
-    }
+    void beginCycle(std::size_t cycle) override { out_ << "cycle " << cycle << '\n'; }
     void stage(std::string_view name, std::string_view description) override {
-        if (verbose_)
-            out_ << "  " << name << std::string(name.size() < 8 ? 8 - name.size() : 0, ' ') << description << '\n';
+        out_ << "  " << name << std::string(name.size() < 8 ? 8 - name.size() : 0, ' ') << description << '\n';
     }
-    void event(std::string_view message) override { out_ << "warning: " << message << '\n'; }
 
 private:
     std::ostream& out_;
-    bool verbose_;
 };
 
 /*non-zero registers and data memory words; the format of the .expected files in tests/programs*/

@@ -11,16 +11,45 @@ An assembler and a **5-stage pipelined RISC-V (RV32I) CPU** simulator written in
 | Stage | Work |
 | --- | --- |
 | IF  | fetch the instruction at PC, PC += 4 |
-| ID  | decode, read registers, stall on data hazards |
-| EX  | ALU operation; branches and jumps resolve here |
-| MEM | data memory load / store |
-| WB  | register write back |
+| ID  | decode, read registers, detect load-use hazards |
+| EX  | ALU operation with forwarded operands; branches and jumps resolve here |
+| MEM | data memory load / store; faults and halts take effect here |
+| WB  | register write back (first half of the cycle, so ID reads the new value) |
 
-Data hazards are handled by stalling. A scoreboard (`HazardUnit`) marks the destination register of every issued
-instruction, and decode waits until the write back of any source register has happened. A taken branch or jump
-resolves in EX and flushes the one instruction fetched behind it.
+Each cycle, every stage works on the pipeline registers as they were at the start of the cycle, and all the new
+values are applied together at the end, like a clock edge.
 
-The data memory is 256 bytes, byte-addressed and little-endian. Accesses must be naturally aligned.
+- **Forwarding:** the hazard unit forwards results into EX from EX/MEM (the previous instruction) and MEM/WB (two
+  back), so dependent ALU instructions, branches, jump targets and store data run without stalling.
+- **Load-use stall:** an instruction that needs the result of the load directly ahead of it waits one cycle. A
+  bubble enters ID/EX, then MEM/WB forwarding supplies the loaded value.
+- **Branches and jumps:** they resolve in EX. When one is taken, the instructions in IF/ID and ID/EX are on the
+  wrong path and are flushed, so a taken branch costs two cycles.
+- **Halting:** `ecall` and `ebreak` stop the program once every older instruction has completed. Running past the
+  last instruction also ends the program.
+- **Faults:** a load or store outside data memory or not naturally aligned, an illegal instruction word, or a jump
+  outside the program raises a fault and stops the program. Faults are precise: older instructions complete,
+  younger ones have no effect, and an illegal word on a flushed wrong path never faults.
+- **Cycle limit:** a program stops after 10000 cycles by default (`--max-cycles`), so an infinite loop can't hang
+  the simulator.
+
+The data memory is 256 bytes, byte-addressed and little-endian. `lb`/`lh`/`lw` read 1, 2 or 4 bytes and
+sign-extend; `lbu`/`lhu` zero-extend.
+
+After a run, `rvsim` prints the final registers and memory, followed by statistics:
+
+```
+statistics
+  outcome       finished
+  cycles        19
+  instructions  11
+  CPI           1.73
+  stalls        2 cycles (load-use)
+  flushes       2 instructions (1 taken branch/jump)
+```
+
+The reference model (`--model iss`) runs one instruction per cycle, so its CPI is always 1.00. Comparing the two
+shows what the hazards cost.
 
 ## Building
 
@@ -45,12 +74,12 @@ build/rvasm --listing tests/programs/fibonacci.s      # address, encoding, disas
 build/rvasm -o fib.hex tests/programs/fibonacci.s
 
 build/rvsim tests/programs/fibonacci.s                # final state on the pipeline
-build/rvsim --trace tests/programs/hazards.s          # pipeline registers after every cycle
+build/rvsim --trace tests/programs/forwarding.s       # pipeline registers, stalls, flushes and forwarding per cycle
 build/rvsim --model iss fib.hex                       # reference model, machine code input
 ```
 
-Without a file argument, both tools read standard input. `rvsim` exits with status 0 when the program finishes,
-1 for bad input, and 2 when the cycle limit stops it (`--max-cycles`, default 10000).
+Without a file argument, both tools read standard input. `rvsim` exits with status 0 when the program finishes or
+halts, 1 for bad input, 2 when the cycle limit stops it, and 3 on a fault. `--no-stats` prints only the final state.
 
 ## Assembly syntax
 
@@ -73,7 +102,7 @@ next:   sw   x1, 0[x3]          # memory operands: imm[reg] or imm(reg)
 - **Immediates:** decimal (`-2`) or hexadecimal (`0xF`). Hexadecimal is read as 32-bit two's complement, so
   `0xFFFFFFFE` is -2. `lui` and `auipc` take the 20-bit upper value.
 - **Case:** mnemonics, registers and labels are case-insensitive.
-- **Instructions:** the RV32I base integer instructions except `fence`, `ecall` and `ebreak`.
+- **Instructions:** the RV32I base integer instructions except `fence`; `ecall` and `ebreak` halt the program.
 
 ## Project layout
 
@@ -82,17 +111,17 @@ include/rv/   isa.hpp        instruction table, Reg, DecodedInst (shared by ever
               assembler.hpp  assemble(), encode(), Diagnostic, Result
               decoder.hpp    decode(), disassemble()
               memory.hpp     RegisterFile, InstructionMemory, DataMemory
-              cpu.hpp        Control, ALU, HazardUnit, Iss, Pipeline
-              trace.hpp      Tracer interface, text tracer, state dump
+              cpu.hpp        Control, ALU, faults, HazardUnit, Iss, Pipeline, run statistics
+              trace.hpp      Tracer interface, per-cycle text trace, state dump
 src/asm/      lexer.cpp      source -> statements and tokens
               parser.cpp     operands and labels -> DecodedInst; the two assembler passes
               encoder.cpp    DecodedInst -> 32-bit word
 src/sim/      decoder.cpp    32-bit word -> DecodedInst, disassembly
-              alu.cpp        control signals, ALU, execute stage
-              memory.cpp     data memory loads and stores
+              alu.cpp        control signals, ALU, execute and memory stage logic, faults
+              memory.cpp     data memory loads, stores and bounds checks
               iss.cpp        single-cycle reference model
               pipeline.cpp   5-stage pipeline
-              hazard.cpp     scoreboard for RAW hazards
+              hazard.cpp     forwarding selection and load-use detection
 apps/         rvasm.cpp, rvsim.cpp   command line tools
 tests/unit/   unit tests (no external dependencies)
 tests/programs/  *.s programs with the expected final state (*.expected), run on both CPU models
@@ -101,10 +130,13 @@ tests/programs/  *.s programs with the expected final state (*.expected), run on
 ## Tests
 
 `ctest` runs the following:
-- **Unit tests:** encodings checked against the LLVM RISC-V assembler, encode/decode round trips for every
-  instruction, diagnostics, the ALU, memory, the hazard unit, and pipeline-versus-ISS comparisons.
+- **Unit tests:**
+  - encodings checked against the LLVM RISC-V assembler, and encode/decode round trips for every instruction;
+  - the assembler's diagnostics, the ALU, memory and the hazard unit;
+  - exact pipeline cycle, stall and flush counts, plus faults and halts;
+  - pipeline-versus-ISS comparisons.
 - **Program tests:** every program in `tests/programs` on both the pipeline and the ISS, compared with its
   `.expected` dump.
 
-To add a test program, write `name.s`, create `name.expected` with `rvsim --model iss name.s > name.expected`, and
+To add a test program, write `name.s`, create `name.expected` with `rvsim --model iss --no-stats name.s > name.expected`, and
 check the values by hand.

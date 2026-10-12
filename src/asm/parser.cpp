@@ -114,6 +114,7 @@ std::size_t operandCount(Kind kind) {
         case Kind::Lui:
         case Kind::Auipc:
         case Kind::Jal: return 2;
+        case Kind::System: return 0;
         default: return 3;
     }
 }
@@ -230,6 +231,8 @@ Result<DecodedInst, Diagnostic> parseInstruction(const Statement& statement, uin
             }
             else
                 error = immediate(parseField(operands[2], 12));
+            break;
+        case Kind::System:
             break;
     }
     if (error)

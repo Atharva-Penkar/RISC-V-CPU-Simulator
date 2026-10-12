@@ -33,6 +33,10 @@ void addMemoryTests(Suite& suite) {
         expect(!memory.load(0b010, 16).has_value(), "past the end");
         expect(!memory.load(0b010, 0xFFFFFFFCu).has_value(), "wraps around");
         expect(!memory.store(0b000, 16, 1), "store past the end");
+        expect(memory.check(2, 4) == rv::MemoryError::Misaligned);
+        expect(memory.check(16, 1) == rv::MemoryError::OutOfRange);
+        expect(memory.check(14, 4) == rv::MemoryError::OutOfRange);
+        expect(memory.check(12, 4) == rv::MemoryError::None);
     });
 
     suite.add("instruction memory bounds", [] {

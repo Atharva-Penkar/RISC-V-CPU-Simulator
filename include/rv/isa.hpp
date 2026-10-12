@@ -35,7 +35,7 @@ private:
 inline std::string toString(Reg reg) { return "x" + std::to_string(reg.index()); }
 
 /*instruction class: decides operand syntax, encoding format and control signals*/
-enum class Kind : uint8_t { Alu, AluImm, Shift, Load, Store, Branch, Lui, Auipc, Jal, Jalr };
+enum class Kind : uint8_t { Alu, AluImm, Shift, Load, Store, Branch, Lui, Auipc, Jal, Jalr, System };
 
 /*encoding layout*/
 enum class Format : uint8_t { R, I, S, B, U, J };
@@ -49,7 +49,8 @@ constexpr Format formatOf(Kind kind) {
         case Kind::AluImm:
         case Kind::Shift:
         case Kind::Load:
-        case Kind::Jalr: return Format::I;
+        case Kind::Jalr:
+        case Kind::System: return Format::I;
         case Kind::Store: return Format::S;
         case Kind::Branch: return Format::B;
         case Kind::Lui:
@@ -71,6 +72,7 @@ constexpr uint32_t opcodeOf(Kind kind) {
         case Kind::Auipc: return 0b0010111;
         case Kind::Jal: return 0b1101111;
         case Kind::Jalr: return 0b1100111;
+        case Kind::System: return 0b1110011;
     }
     return 0;
 }
@@ -84,6 +86,7 @@ struct InstrSpec {
     uint32_t funct3;
     uint32_t funct7;    // R type, and imm[11:5] of the immediate shifts
     AluOp alu;
+    uint32_t funct12 = 0;   // System: the whole immediate field (0 ECALL, 1 EBREAK)
 };
 
 /*single source of truth for the assembler, the decoder and the ALU control*/
@@ -131,6 +134,9 @@ inline constexpr auto kIsa = std::to_array<InstrSpec>({
     {"AUIPC", Kind::Auipc,  0, 0, AluOp::Add},
     {"JAL",   Kind::Jal,    0, 0, AluOp::Add},       // ALU computes the target pc+imm
     {"JALR",  Kind::Jalr,   0b000, 0, AluOp::Add},   // ALU computes the target rs1+imm
+
+    {"ECALL",  Kind::System, 0b000, 0, AluOp::PassB, 0},     // both halt the simulation
+    {"EBREAK", Kind::System, 0b000, 0, AluOp::PassB, 1},
 });
 
 /*mnemonic must be upper case*/

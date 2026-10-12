@@ -2,19 +2,20 @@
 
 namespace rv {
 
-bool HazardUnit::mustStall(const DecodedInst& inst, const Control& control) const {
-    return (control.readsRs1 && pending_[inst.rs1.index()].has_value())
-        || (control.readsRs2 && pending_[inst.rs2.index()].has_value());
+ForwardSource HazardUnit::forward(Reg source, const PendingWrite& exMem, const PendingWrite& memWb) {
+    if (source.index() == 0)
+        return ForwardSource::RegisterFile;
+    if (exMem.valid && exMem.rd == source)
+        return ForwardSource::ExMem;
+    if (memWb.valid && memWb.rd == source)
+        return ForwardSource::MemWb;
+    return ForwardSource::RegisterFile;
 }
 
-void HazardUnit::issue(const DecodedInst& inst, const Control& control, uint64_t tag) {
-    if (control.regWrite && inst.rd.index() != 0)  // x0 is never written, so never pending
-        pending_[inst.rd.index()] = tag;
-}
-
-void HazardUnit::writeBack(Reg rd, uint64_t tag) {
-    if (pending_[rd.index()] == tag)
-        pending_[rd.index()].reset();
+bool HazardUnit::loadUseHazard(const DecodedInst& inId, const Control& idControl, const PendingWrite& loadInEx) {
+    if (!loadInEx.valid || loadInEx.rd.index() == 0)
+        return false;
+    return (idControl.readsRs1 && inId.rs1 == loadInEx.rd) || (idControl.readsRs2 && inId.rs2 == loadInEx.rd);
 }
 
 }  // namespace rv

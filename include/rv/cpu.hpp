@@ -1,8 +1,7 @@
-// CPU models: control and ALU, the hazard unit, a single-cycle instruction set simulator (ISS)
+// CPU models: control and ALU, faults, the hazard unit, a single-cycle instruction set simulator (ISS)
 // used as the reference model, and the 5-stage pipeline.
 #pragma once
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -26,6 +25,7 @@ struct Control {
     bool memToReg = false;
     bool branch = false;
     bool jump = false;
+    bool halt = false;      // ECALL, EBREAK
 };
 
 Control controlFor(Kind kind);
@@ -38,35 +38,88 @@ struct ExecuteResult {
     std::optional<uint32_t> target;     // set when a branch is taken or for a jump
 };
 
-/*the execute stage, shared by both CPU models*/
+/*the execute stage, shared by both CPU models; rs1 and rs2 are the operand values*/
 ExecuteResult execute(const DecodedInst& inst, const Control& control, uint32_t pc, uint32_t rs1, uint32_t rs2);
 
-/*scoreboard: a register is pending while an issued instruction will still write it*/
+/*an exception that stops the program; the faulting instruction does not complete*/
+enum class FaultKind : uint8_t {
+    IllegalInstruction,
+    FetchOutOfRange,
+    FetchMisaligned,
+    LoadOutOfRange,
+    LoadMisaligned,
+    StoreOutOfRange,
+    StoreMisaligned,
+};
+
+struct Fault {
+    FaultKind kind;
+    uint32_t pc;        // address of the faulting instruction (for fetch faults, the address fetched)
+    uint32_t address;   // the bad memory or fetch address, or the instruction word for an illegal instruction
+};
+
+std::string describe(const Fault& fault);
+
+/*the memory stage, shared by both CPU models: the loaded value (0 for other instructions) or a fault*/
+struct MemoryResult {
+    uint32_t loaded = 0;
+    std::optional<Fault> fault;
+};
+MemoryResult accessMemory(DataMemory& memory, const DecodedInst& inst, const Control& control, uint32_t pc,
+                          uint32_t address, uint32_t storeData);
+
+/*where the execute stage takes a source operand from*/
+enum class ForwardSource : uint8_t { RegisterFile, ExMem, MemWb };
+
+/*a pipeline register's pending register write, as the hazard unit sees it*/
+struct PendingWrite {
+    bool valid = false;     // the pipeline register holds an instruction that writes rd
+    Reg rd;
+};
+
+/*data-hazard logic of the pipeline*/
 class HazardUnit {
 public:
-    /*true when a source register of inst still waits for its write back (RAW hazard)*/
-    bool mustStall(const DecodedInst& inst, const Control& control) const;
-    /*inst enters the pipeline with this tag*/
-    void issue(const DecodedInst& inst, const Control& control, uint64_t tag);
-    /*the instruction with this tag has written rd; only the youngest writer clears the reservation*/
-    void writeBack(Reg rd, uint64_t tag);
+    /*the newest older instruction that writes source wins; x0 is never forwarded*/
+    static ForwardSource forward(Reg source, const PendingWrite& exMem, const PendingWrite& memWb);
 
-private:
-    std::array<std::optional<uint64_t>, 32> pending_{};
+    /*the instruction in ID needs a register the load in EX has not read from memory yet:
+    it must wait one cycle, after which MEM/WB forwarding supplies the value*/
+    static bool loadUseHazard(const DecodedInst& inId, const Control& idControl, const PendingWrite& loadInEx);
+};
+
+enum class Outcome : uint8_t {
+    Finished,       // ran past the last instruction
+    Halted,         // ECALL or EBREAK
+    Faulted,
+    CycleLimit,     // stopped by the cycle limit, possibly an infinite loop
+};
+
+std::string toString(Outcome outcome);
+
+struct RunStats {
+    std::size_t cycles = 0;
+    std::size_t retired = 0;        // instructions that completed
+    std::size_t stalls = 0;         // cycles a load-use hazard held the pipeline
+    std::size_t flushes = 0;        // wrong-path instructions discarded
+    std::size_t redirects = 0;      // taken branches and jumps
+
+    double cpi() const { return retired == 0 ? 0.0 : static_cast<double>(cycles) / static_cast<double>(retired); }
 };
 
 struct RunResult {
-    std::size_t cycles = 0;
-    std::size_t retired = 0;
-    bool completed = false;     // false when the cycle limit stopped the program
+    Outcome outcome = Outcome::Finished;
+    RunStats stats;
+    std::optional<Fault> fault;     // set when outcome is Faulted
+    uint32_t haltPc = 0;            // address of the ECALL/EBREAK when outcome is Halted
 };
 
-/*executes one instruction per step; the reference the pipeline is tested against*/
+/*executes one instruction per cycle; the reference the pipeline is tested against*/
 class Iss {
 public:
     explicit Iss(InstructionMemory program) : imem_(program) {}
 
-    RunResult run(Tracer& tracer, std::size_t maxInstructions = kMaxCycles);
+    RunResult run(Tracer& tracer, std::size_t maxCycles = kMaxCycles);
 
     const RegisterFile& registers() const { return regs_; }
     const DataMemory& memory() const { return dmem_; }
@@ -77,8 +130,10 @@ private:
     DataMemory dmem_;
 };
 
-/*5-stage pipeline (IF, ID, EX, MEM, WB). RAW hazards stall in ID until the producer has written
-back; branches and jumps resolve in EX and flush the one instruction fetched behind them*/
+/*5-stage pipeline (IF, ID, EX, MEM, WB) with full forwarding into EX, a one-cycle stall for a load
+followed by a dependent instruction, and branches and jumps resolved in EX, which flush IF/ID and ID/EX.
+Faults and halts take effect when the instruction reaches MEM, so they are precise: every older
+instruction completes and no younger one has changed any state*/
 class Pipeline {
 public:
     explicit Pipeline(InstructionMemory program);
@@ -89,65 +144,66 @@ public:
     const DataMemory& memory() const { return dmem_; }
 
 private:
-    struct ProgramCounter {
-        uint32_t value = 0;
-        bool valid = false;
-    };
-
     struct IfId {
         bool valid = false;
-        bool stall = false;
         uint32_t pc = 0;
         uint32_t ir = 0;
+        std::optional<Fault> fault;     // fetch fault, raised if the instruction reaches MEM
     };
 
     struct IdEx {
         bool valid = false;
+        uint32_t pc = 0;
         DecodedInst inst;
         Control cw;
-        uint32_t pc = 0;
-        uint32_t rs1 = 0;   // operand values
+        uint32_t rs1 = 0;   // register file values, before forwarding
         uint32_t rs2 = 0;
-        uint64_t tag = 0;
+        std::optional<Fault> fault;
     };
 
     struct ExMem {
         bool valid = false;
+        uint32_t pc = 0;
         DecodedInst inst;
         Control cw;
         uint32_t aluOut = 0;    // memory address, or the value to write back
         uint32_t storeData = 0;
-        uint64_t tag = 0;
+        std::optional<Fault> fault;
     };
 
     struct MemWb {
         bool valid = false;
+        uint32_t pc = 0;
         DecodedInst inst;
         Control cw;
-        uint32_t aluOut = 0;
-        uint32_t loadData = 0;
-        uint64_t tag = 0;
+        uint32_t result = 0;    // value to write back
     };
 
-    void fetch();
-    void decodeStage(Tracer& tracer);
-    void executeStage(Tracer& tracer);
-    void memoryStage(Tracer& tracer);
-    void writeBackStage();
-    void traceState(Tracer& tracer) const;
-    bool busy() const;
+    /*what happened in one cycle, for the trace*/
+    struct CycleEvents {
+        bool stalled = false;
+        std::size_t flushed = 0;
+        ForwardSource rs1 = ForwardSource::RegisterFile;
+        ForwardSource rs2 = ForwardSource::RegisterFile;
+    };
+
+    /*advances every stage by one clock; returns the outcome when the program stops in this cycle*/
+    std::optional<Outcome> cycle(CycleEvents& events);
+    bool empty() const;
+    PendingWrite pendingWrite(const ExMem& latch) const;
+    PendingWrite pendingWrite(const MemWb& latch) const;
+    void trace(Tracer& tracer, const CycleEvents& events) const;
 
     InstructionMemory imem_;
     RegisterFile regs_;
     DataMemory dmem_;
-    HazardUnit hazards_;
-    ProgramCounter pc_;
+    uint32_t pc_ = 0;
+    bool fetching_ = false;     // false once the PC has run past the program
     IfId ifid_;
     IdEx idex_;
     ExMem exmem_;
     MemWb memwb_;
-    uint64_t nextTag_ = 0;
-    std::size_t retired_ = 0;
+    RunResult result_;
 };
 
 }  // namespace rv
