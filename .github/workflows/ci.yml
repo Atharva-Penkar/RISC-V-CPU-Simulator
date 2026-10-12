@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux GCC (sanitizers)
+            os: ubuntu-latest
+            cmake-args: -DCMAKE_CXX_COMPILER=g++ -DRV_WARNINGS_AS_ERRORS=ON -DRV_SANITIZE=ON
+          - name: Linux GCC C++23
+            os: ubuntu-latest
+            cmake-args: -DCMAKE_CXX_COMPILER=g++ -DCMAKE_CXX_STANDARD=23 -DRV_WARNINGS_AS_ERRORS=ON
+          - name: Linux Clang
+            os: ubuntu-latest
+            cmake-args: -DCMAKE_CXX_COMPILER=clang++ -DRV_WARNINGS_AS_ERRORS=ON
+          - name: macOS AppleClang
+            os: macos-latest
+            cmake-args: -DRV_WARNINGS_AS_ERRORS=ON
+          - name: Windows MSVC
+            os: windows-latest
+            cmake-args: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake-args }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build --build-config Release --output-on-failure
