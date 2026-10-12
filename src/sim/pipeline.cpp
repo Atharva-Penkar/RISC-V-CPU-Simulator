@@ -42,10 +42,12 @@ RunResult Pipeline::run(Tracer& tracer, std::size_t maxCycles) {
             return result_;
         }
         stats.cycles++;
-        tracer.beginCycle(stats.cycles);
         CycleEvents events;
         const std::optional<Outcome> outcome = cycle(events);
-        trace(tracer, events);
+        if (tracer.enabled()) {
+            tracer.beginCycle(stats.cycles);
+            trace(tracer, events);
+        }
         if (outcome) {
             result_.outcome = *outcome;
             return result_;
@@ -126,7 +128,7 @@ std::optional<Outcome> Pipeline::cycle(CycleEvents& events) {
     if (ifid_.valid) {
         if (ifid_.fault)
             nextIdEx = {true, ifid_.pc, {}, {}, 0, 0, ifid_.fault};
-        else if (const std::optional<DecodedInst> inst = decode(ifid_.ir)) {
+        else if (const std::optional<DecodedInst>& inst = imem_.decoded(ifid_.pc)) {
             const Control cw = controlFor(inst->kind());
             const PendingWrite loadInEx{idex_.valid && !idex_.fault && idex_.cw.memRead, idex_.inst.rd};
             if (HazardUnit::loadUseHazard(*inst, cw, loadInEx))

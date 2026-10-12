@@ -11,9 +11,11 @@
 
 namespace rv {
 
+/*the CPU models only build trace text when enabled() is true, so the default tracer costs nothing*/
 class Tracer {
 public:
     virtual ~Tracer() = default;
+    virtual bool enabled() const { return false; }
     /*a new clock cycle (pipeline) or instruction (ISS) starts*/
     virtual void beginCycle(std::size_t /*cycle*/) {}
     /*state of one pipeline register at the end of the cycle, or the cycle's hazard events*/
@@ -25,6 +27,7 @@ class TextTracer : public Tracer {
 public:
     explicit TextTracer(std::ostream& out) : out_(out) {}
 
+    bool enabled() const override { return true; }
     void beginCycle(std::size_t cycle) override { out_ << "cycle " << cycle << '\n'; }
     void stage(std::string_view name, std::string_view description) override {
         out_ << "  " << name << std::string(name.size() < 8 ? 8 - name.size() : 0, ' ') << description << '\n';

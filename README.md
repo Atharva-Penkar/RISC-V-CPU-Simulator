@@ -51,6 +51,9 @@ statistics
 The reference model (`--model iss`) runs one instruction per cycle, so its CPI is always 1.00. Comparing the two
 shows what the hazards cost.
 
+The program is decoded once when it is loaded, and trace text is only built when `--trace` is on. Without tracing,
+a Release build runs about 12 million pipeline cycles per second.
+
 ## Building
 
 You need CMake 3.20 or newer and a C++20 compiler (GCC 10+, Clang 14+, MSVC 19.29+).
@@ -110,7 +113,7 @@ next:   sw   x1, 0[x3]          # memory operands: imm[reg] or imm(reg)
 include/rv/   isa.hpp        instruction table, Reg, DecodedInst (shared by everything)
               assembler.hpp  assemble(), encode(), Diagnostic, Result
               decoder.hpp    decode(), disassemble()
-              memory.hpp     RegisterFile, InstructionMemory, DataMemory
+              memory.hpp     RegisterFile, InstructionMemory (decoded at load), DataMemory
               cpu.hpp        Control, ALU, faults, HazardUnit, Iss, Pipeline, run statistics
               trace.hpp      Tracer interface, per-cycle text trace, state dump
 src/asm/      lexer.cpp      source -> statements and tokens

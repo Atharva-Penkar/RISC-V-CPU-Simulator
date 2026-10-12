@@ -1,5 +1,7 @@
 #include "check.hpp"
 
+#include <vector>
+
 #include "rv/memory.hpp"
 
 namespace test {
@@ -45,6 +47,14 @@ void addMemoryTests(Suite& suite) {
         expect(imem.contains(4) && !imem.contains(8) && !imem.contains(2));
         expectEq(imem.fetch(4), 2u);
         expectEq(imem.endAddress(), 8u);
+    });
+
+    suite.add("instruction memory decodes the program once", [] {
+        const std::vector<uint32_t> words = {0x003100B3u, 0xFFFFFFFFu};   // add x1,x2,x3; illegal
+        const rv::InstructionMemory imem(words);
+        expect(imem.decoded(0).has_value() && imem.decoded(0)->spec == rv::findSpec("ADD"));
+        expect(imem.decoded(0)->rd == rv::Reg::fromField(1));
+        expect(!imem.decoded(4).has_value(), "illegal word");
     });
 }
 

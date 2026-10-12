@@ -197,6 +197,29 @@ void addCpuTests(Suite& suite) {
         expect(iss.run(quiet, 50).outcome == rv::Outcome::CycleLimit, "ISS");
     });
 
+    suite.add("a disabled tracer receives nothing", [] {
+        class Counting : public rv::Tracer {
+        public:
+            explicit Counting(bool on) : on_(on) {}
+            bool enabled() const override { return on_; }
+            void beginCycle(std::size_t) override { calls++; }
+            void stage(std::string_view, std::string_view) override { calls++; }
+            std::size_t calls = 0;
+
+        private:
+            bool on_;
+        };
+        const rv::Program program = assembleOrFail("addi x1,x0,1; add x2,x1,x1");
+        for (const bool on : {false, true}) {
+            Counting pipelineTracer(on), issTracer(on);
+            rv::Pipeline pipeline{rv::InstructionMemory(program)};
+            rv::Iss iss{rv::InstructionMemory(program)};
+            pipeline.run(pipelineTracer);
+            iss.run(issTracer);
+            expect((pipelineTracer.calls != 0) == on && (issTracer.calls != 0) == on, on ? "enabled" : "disabled");
+        }
+    });
+
     suite.add("pipeline agrees with the ISS", [] {
         expectModelsAgree("addi x1,x0,5; addi x2,x0,0; loop: addi x2,x2,3; addi x1,x1,-1; bne x1,x0,loop; sw x2,4[x0]");
         expectModelsAgree("addi x1,x0,8; addi x4,x0,-2; sw x4,0[x1]; lw x5,0[x1]; lbu x6,0[x1]; add x7,x5,x6; sh x7,6[x1]");

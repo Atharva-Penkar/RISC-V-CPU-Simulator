@@ -1,6 +1,14 @@
 #include "rv/memory.hpp"
 
+#include "rv/decoder.hpp"
+
 namespace rv {
+
+InstructionMemory::InstructionMemory(std::span<const uint32_t> words) : words_(words) {
+    decoded_.reserve(words.size());
+    for (const uint32_t word : words)
+        decoded_.push_back(decode(word));
+}
 
 MemoryError DataMemory::check(uint32_t address, uint32_t width) const {
     if (width != 1 && width != 2 && width != 4)
