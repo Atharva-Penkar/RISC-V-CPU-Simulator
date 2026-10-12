@@ -60,6 +60,11 @@ void addAssemblerTests(Suite& suite) {
         expect(a == b && a.size() == 3, "equivalent sources assemble differently");
     });
 
+    suite.add("ecall and ebreak take no operands", [] {
+        expect(assembleOk("ecall; EBREAK") == std::vector<uint32_t>{0x00000073u, 0x00100073u}, "encodings");
+        expect(assembleErrors("ecall x1").size() == 1, "operand rejected");
+    });
+
     suite.add("immediate formats", [] {
         expect(assembleOk("addi x1,x0,0xF") == assembleOk("addi x1,x0,15"), "0xF");
         expect(assembleOk("addi x1,x0,0xFFFFFFFE") == assembleOk("addi x1,x0,-2"), "32-bit hex is two's complement");

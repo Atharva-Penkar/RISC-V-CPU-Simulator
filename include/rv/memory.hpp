@@ -43,12 +43,20 @@ private:
     std::span<const uint32_t> words_;
 };
 
+enum class MemoryError : uint8_t { None, Misaligned, OutOfRange };
+
 /*byte-addressed and little-endian; accesses must be naturally aligned and in range*/
 class DataMemory {
 public:
     explicit DataMemory(std::size_t bytes = kMemoryBytes) : bytes_(bytes, 0) {}
 
     std::size_t size() const { return bytes_.size(); }
+
+    /*bytes accessed by the load or store with this funct3: 1, 2 or 4*/
+    static uint32_t accessWidth(uint32_t funct3) { return 1u << (funct3 & 3u); }
+
+    /*why an access of width bytes at address would fail, or MemoryError::None*/
+    MemoryError check(uint32_t address, uint32_t width) const;
 
     /*1, 2 or 4 bytes, zero-extended; nullopt for an invalid access*/
     std::optional<uint32_t> read(uint32_t address, uint32_t width) const;
@@ -60,8 +68,6 @@ public:
     bool store(uint32_t funct3, uint32_t address, uint32_t value);
 
 private:
-    bool valid(uint32_t address, uint32_t width) const;
-
     std::vector<uint8_t> bytes_;
 };
 

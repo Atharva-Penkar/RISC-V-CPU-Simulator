@@ -1,4 +1,5 @@
 #include "rv/cpu.hpp"
+#include "rv/decoder.hpp"
 
 namespace rv {
 
@@ -31,6 +32,9 @@ Control controlFor(Kind kind) {
         case Kind::Jalr:
             c.readsRs1 = c.aluSrc = c.regWrite = c.jump = true;
             break;
+        case Kind::System:
+            c.halt = true;
+            break;
     }
     return c;
 }
@@ -53,6 +57,7 @@ std::string toString(const Control& c) {
     add(c.memToReg, "Mem2Reg");
     add(c.branch, "Branch");
     add(c.jump, "Jump");
+    add(c.halt, "Halt");
     return "[" + flags + "]";
 }
 
@@ -93,6 +98,58 @@ ExecuteResult execute(const DecodedInst& inst, const Control& control, uint32_t 
     if (control.jump)
         return {pc + 4, aluOut & ~1u};     // link address; target pc+imm (JAL) or (rs1+imm)&~1 (JALR)
     return {aluOut, std::nullopt};
+}
+
+MemoryResult accessMemory(DataMemory& memory, const DecodedInst& inst, const Control& control, uint32_t pc,
+                          uint32_t address, uint32_t storeData) {
+    if (!control.memRead && !control.memWrite)
+        return {};
+    const uint32_t funct3 = inst.spec->funct3;
+    switch (memory.check(address, DataMemory::accessWidth(funct3))) {
+        case MemoryError::OutOfRange:
+            return {0, Fault{control.memRead ? FaultKind::LoadOutOfRange : FaultKind::StoreOutOfRange, pc, address}};
+        case MemoryError::Misaligned:
+            return {0, Fault{control.memRead ? FaultKind::LoadMisaligned : FaultKind::StoreMisaligned, pc, address}};
+        case MemoryError::None:
+            break;
+    }
+    if (control.memWrite) {
+        memory.store(funct3, address, storeData);
+        return {};
+    }
+    return {memory.load(funct3, address).value_or(0), std::nullopt};
+}
+
+std::string describe(const Fault& fault) {
+    const std::string at = " at pc " + toHex(fault.pc) + ": ";
+    const std::string address = toHex(fault.address);
+    switch (fault.kind) {
+        case FaultKind::IllegalInstruction:
+            return "illegal instruction" + at + address + " is not an RV32I instruction";
+        case FaultKind::FetchOutOfRange:
+            return "instruction fetch fault: jump target " + address + " is outside the program";
+        case FaultKind::FetchMisaligned:
+            return "instruction fetch fault: jump target " + address + " is not word aligned";
+        case FaultKind::LoadOutOfRange:
+            return "load access fault" + at + "address " + address + " is outside data memory";
+        case FaultKind::LoadMisaligned:
+            return "load access fault" + at + "address " + address + " is misaligned";
+        case FaultKind::StoreOutOfRange:
+            return "store access fault" + at + "address " + address + " is outside data memory";
+        case FaultKind::StoreMisaligned:
+            return "store access fault" + at + "address " + address + " is misaligned";
+    }
+    return "fault" + at;
+}
+
+std::string toString(Outcome outcome) {
+    switch (outcome) {
+        case Outcome::Finished: return "finished";
+        case Outcome::Halted: return "halted";
+        case Outcome::Faulted: return "faulted";
+        case Outcome::CycleLimit: return "cycle limit reached";
+    }
+    return "unknown";
 }
 
 }  // namespace rv

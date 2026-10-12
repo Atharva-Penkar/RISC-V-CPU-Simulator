@@ -1,6 +1,7 @@
 // rvsim: runs an RV32I program on the pipeline (default) or the reference ISS and prints the final state.
 #include <charconv>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <iterator>
 #include <optional>
@@ -13,10 +14,11 @@
 namespace {
 
 constexpr std::string_view kUsage =
-    "usage: rvsim [--model pipeline|iss] [--trace] [--max-cycles N] [input.s | input.hex]\n"
+    "usage: rvsim [--model pipeline|iss] [--trace] [--no-stats] [--max-cycles N] [input.s | input.hex]\n"
     "  reads assembly from standard input when no input file is given\n"
     "  .hex input holds one hexadecimal instruction word per line (rvasm output)\n"
-    "  exit status: 0 finished, 1 bad input, 2 stopped by the cycle limit\n";
+    "  --no-stats   print only the final registers and memory\n"
+    "  exit status: 0 finished or halted, 1 bad input, 2 cycle limit reached, 3 fault\n";
 
 std::optional<rv::Program> readHex(std::string_view text, std::string_view fileName) {
     rv::Program program;
@@ -44,19 +46,46 @@ std::optional<rv::Program> readHex(std::string_view text, std::string_view fileN
     return program;
 }
 
+std::string plural(std::size_t count, std::string_view noun) {
+    return std::to_string(count) + " " + std::string(noun) + (count == 1 ? "" : "s");
+}
+
+void printStats(const rv::RunResult& result, std::ostream& out) {
+    const rv::RunStats& stats = result.stats;
+    out << "statistics\n"
+        << "  outcome       " << rv::toString(result.outcome);
+    if (result.outcome == rv::Outcome::Halted)
+        out << " at pc " << rv::toHex(result.haltPc);
+    out << "\n  cycles        " << stats.cycles
+        << "\n  instructions  " << stats.retired
+        << "\n  CPI           " << std::fixed << std::setprecision(2) << stats.cpi()
+        << "\n  stalls        " << plural(stats.stalls, "cycle") << " (load-use)"
+        << "\n  flushes       " << plural(stats.flushes, "instruction") << " (" << stats.redirects
+        << (stats.redirects == 1 ? " taken branch/jump" : " taken branches/jumps") << ")\n";
+}
+
 template <class Model>
-int simulate(const rv::Program& program, bool trace, std::size_t maxCycles) {
+int simulate(const rv::Program& program, bool trace, bool stats, std::size_t maxCycles) {
     Model model{rv::InstructionMemory(program)};
-    rv::TextTracer tracer(trace ? std::cout : std::cerr, trace);
-    const rv::RunResult result = model.run(tracer, maxCycles);
+    rv::Tracer quiet;
+    rv::TextTracer text(std::cout);
+    const rv::RunResult result = model.run(trace ? static_cast<rv::Tracer&>(text) : quiet, maxCycles);
     rv::dumpState(model.registers(), model.memory(), std::cout);
+    if (stats)
+        printStats(result, std::cout);
     std::cout.flush();
-    std::cerr << result.retired << " instructions retired in " << result.cycles << " cycles\n";
-    if (!result.completed) {
-        std::cerr << "rvsim: stopped after " << maxCycles << " cycles (possible infinite loop)\n";
-        return 2;
+    switch (result.outcome) {
+        case rv::Outcome::Finished:
+        case rv::Outcome::Halted:
+            return 0;
+        case rv::Outcome::CycleLimit:
+            std::cerr << "rvsim: stopped after " << maxCycles << " cycles (possible infinite loop)\n";
+            return 2;
+        case rv::Outcome::Faulted:
+            std::cerr << "rvsim: " << rv::describe(*result.fault) << '\n';
+            return 3;
     }
-    return 0;
+    return 3;
 }
 
 }  // namespace
@@ -65,11 +94,14 @@ int main(int argc, char** argv) {
     std::string inputPath;
     std::string_view model = "pipeline";
     bool trace = false;
+    bool stats = true;
     std::size_t maxCycles = rv::kMaxCycles;
     for (int i = 1; i < argc; i++) {
         const std::string_view arg = argv[i];
         if (arg == "--trace")
             trace = true;
+        else if (arg == "--no-stats")
+            stats = false;
         else if (arg == "--model" && i + 1 < argc)
             model = argv[++i];
         else if (arg == "--max-cycles" && i + 1 < argc) {
@@ -125,6 +157,6 @@ int main(int argc, char** argv) {
         program = std::move(*assembled);
     }
 
-    return model == "iss" ? simulate<rv::Iss>(program, trace, maxCycles)
-                          : simulate<rv::Pipeline>(program, trace, maxCycles);
+    return model == "iss" ? simulate<rv::Iss>(program, trace, stats, maxCycles)
+                          : simulate<rv::Pipeline>(program, trace, stats, maxCycles);
 }

@@ -14,7 +14,11 @@ uint32_t encode(const DecodedInst& inst) {
         case Format::R:
             return spec.funct7 << 25 | rs2 | rs1 | funct3 | rd | opcode;
         case Format::I: {
-            const uint32_t field = (spec.kind == Kind::Shift) ? (spec.funct7 << 5 | bits(imm, 4, 0)) : bits(imm, 11, 0);
+            uint32_t field = bits(imm, 11, 0);
+            if (spec.kind == Kind::Shift)
+                field = spec.funct7 << 5 | bits(imm, 4, 0);
+            else if (spec.kind == Kind::System)
+                field = spec.funct12;
             return field << 20 | rs1 | funct3 | rd | opcode;
         }
         case Format::S:

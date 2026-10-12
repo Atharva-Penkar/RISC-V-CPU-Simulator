@@ -13,7 +13,9 @@ std::optional<DecodedInst> decode(uint32_t word) {
         const Format format = formatOf(spec.kind);
         if (opcodeOf(spec.kind) != opcode
             || (hasFunct3(format) && spec.funct3 != funct3)
-            || (hasFunct7(spec.kind) && spec.funct7 != funct7))
+            || (hasFunct7(spec.kind) && spec.funct7 != funct7)
+            || (spec.kind == Kind::System
+                && (bits(word, 31, 20) != spec.funct12 || bits(word, 19, 15) != 0 || bits(word, 11, 7) != 0)))
             continue;
         DecodedInst inst{&spec, Reg::fromField(bits(word, 11, 7)), Reg::fromField(bits(word, 19, 15)),
                          Reg::fromField(bits(word, 24, 20)), 0};
@@ -22,8 +24,10 @@ std::optional<DecodedInst> decode(uint32_t word) {
                 break;
             case Format::I:
                 inst.rs2 = Reg();
-                inst.imm = (spec.kind == Kind::Shift) ? static_cast<int32_t>(bits(word, 24, 20))
-                                                      : signExtend(bits(word, 31, 20), 12);
+                if (spec.kind == Kind::Shift)
+                    inst.imm = static_cast<int32_t>(bits(word, 24, 20));
+                else if (spec.kind != Kind::System)
+                    inst.imm = signExtend(bits(word, 31, 20), 12);
                 break;
             case Format::S:
                 inst.rd = Reg();
@@ -75,6 +79,7 @@ std::string disassemble(const DecodedInst& inst) {
         case Kind::Lui:
         case Kind::Auipc: return name + " " + rd + ", " + toHex(static_cast<uint32_t>(inst.imm) >> 12, 1);
         case Kind::Jal: return name + " " + rd + ", " + relative;
+        case Kind::System: return name;
     }
     return name;
 }

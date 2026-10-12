@@ -7,125 +7,207 @@ namespace {
 
 std::string signedValue(uint32_t value) { return std::to_string(static_cast<int32_t>(value)); }
 
+const char* toString(ForwardSource source) {
+    switch (source) {
+        case ForwardSource::ExMem: return "EX/MEM";
+        case ForwardSource::MemWb: return "MEM/WB";
+        case ForwardSource::RegisterFile: break;
+    }
+    return "register file";
+}
+
 }  // namespace
 
 Pipeline::Pipeline(InstructionMemory program) : imem_(program) {
-    pc_.valid = imem_.contains(0);
+    fetching_ = imem_.contains(0);
 }
 
-bool Pipeline::busy() const {
-    return pc_.valid || ifid_.valid || idex_.valid || exmem_.valid || memwb_.valid;
+bool Pipeline::empty() const {
+    return !fetching_ && !ifid_.valid && !idex_.valid && !exmem_.valid && !memwb_.valid;
+}
+
+PendingWrite Pipeline::pendingWrite(const ExMem& latch) const {
+    return {latch.valid && !latch.fault && latch.cw.regWrite, latch.inst.rd};
+}
+
+PendingWrite Pipeline::pendingWrite(const MemWb& latch) const {
+    return {latch.valid && latch.cw.regWrite, latch.inst.rd};
 }
 
 RunResult Pipeline::run(Tracer& tracer, std::size_t maxCycles) {
-    RunResult result;
-    while (busy()) {
-        if (result.cycles == maxCycles) {
-            result.retired = retired_;
-            return result;
+    RunStats& stats = result_.stats;
+    while (!empty()) {
+        if (stats.cycles == maxCycles) {
+            result_.outcome = Outcome::CycleLimit;
+            return result_;
         }
-        result.cycles++;
-        tracer.beginCycle(result.cycles);
-        /*stages run in reverse so each one consumes its input latch before the previous stage refills it*/
-        writeBackStage();
-        memoryStage(tracer);
-        executeStage(tracer);
-        decodeStage(tracer);
-        fetch();
-        traceState(tracer);
+        stats.cycles++;
+        tracer.beginCycle(stats.cycles);
+        CycleEvents events;
+        const std::optional<Outcome> outcome = cycle(events);
+        trace(tracer, events);
+        if (outcome) {
+            result_.outcome = *outcome;
+            return result_;
+        }
     }
-    result.retired = retired_;
-    result.completed = true;
-    return result;
+    result_.outcome = Outcome::Finished;
+    return result_;
 }
 
-void Pipeline::fetch() {
-    if (ifid_.valid || !pc_.valid)     // a stalled instruction still occupies IF/ID
-        return;
-    ifid_ = {true, false, pc_.value, imem_.fetch(pc_.value)};
-    pc_.value += 4;
-    pc_.valid = imem_.contains(pc_.value);
+/*every stage works on the pipeline registers as they were at the start of the cycle;
+the new values are committed together at the end, like a clock edge*/
+std::optional<Outcome> Pipeline::cycle(CycleEvents& events) {
+    RunStats& stats = result_.stats;
+    auto stop = [&](Outcome outcome) {
+        ifid_ = {};     // younger instructions are discarded
+        idex_ = {};
+        exmem_ = {};
+        memwb_ = {};
+        return outcome;
+    };
+
+    /*WB: writes the register file in the first half of the cycle, so ID reads the new value*/
+    if (memwb_.valid) {
+        if (memwb_.cw.regWrite)
+            regs_.write(memwb_.inst.rd, memwb_.result);
+        stats.retired++;
+    }
+
+    /*MEM: faults and halts take effect here, after every older instruction has completed*/
+    MemWb nextMemWb;
+    if (exmem_.valid) {
+        if (exmem_.fault) {
+            result_.fault = exmem_.fault;
+            return stop(Outcome::Faulted);
+        }
+        if (exmem_.cw.halt) {
+            stats.retired++;
+            result_.haltPc = exmem_.pc;
+            return stop(Outcome::Halted);
+        }
+        const MemoryResult mem = accessMemory(dmem_, exmem_.inst, exmem_.cw, exmem_.pc, exmem_.aluOut, exmem_.storeData);
+        if (mem.fault) {
+            result_.fault = mem.fault;
+            return stop(Outcome::Faulted);
+        }
+        nextMemWb = {true, exmem_.pc, exmem_.inst, exmem_.cw, exmem_.cw.memToReg ? mem.loaded : exmem_.aluOut};
+    }
+
+    /*EX: operands are forwarded from the two older instructions that have not written back yet*/
+    ExMem nextExMem;
+    std::optional<uint32_t> redirect;
+    if (idex_.valid) {
+        if (idex_.fault)
+            nextExMem = {true, idex_.pc, {}, {}, 0, 0, idex_.fault};
+        else {
+            const PendingWrite fromExMem = pendingWrite(exmem_);
+            const PendingWrite fromMemWb = pendingWrite(memwb_);
+            auto operand = [&](Reg source, uint32_t registerValue, ForwardSource& used) {
+                used = HazardUnit::forward(source, fromExMem, fromMemWb);
+                switch (used) {
+                    case ForwardSource::ExMem: return exmem_.aluOut;
+                    case ForwardSource::MemWb: return memwb_.result;
+                    case ForwardSource::RegisterFile: break;
+                }
+                return registerValue;
+            };
+            const uint32_t rs1 = operand(idex_.inst.rs1, idex_.rs1, events.rs1);
+            const uint32_t rs2 = operand(idex_.inst.rs2, idex_.rs2, events.rs2);
+            const ExecuteResult ex = execute(idex_.inst, idex_.cw, idex_.pc, rs1, rs2);
+            nextExMem = {true, idex_.pc, idex_.inst, idex_.cw, ex.value, rs2, std::nullopt};
+            redirect = ex.target;
+        }
+    }
+
+    /*ID: decode and read registers; a load in EX whose result is needed here costs one stall cycle*/
+    IdEx nextIdEx;
+    bool stall = false;
+    if (ifid_.valid) {
+        if (ifid_.fault)
+            nextIdEx = {true, ifid_.pc, {}, {}, 0, 0, ifid_.fault};
+        else if (const std::optional<DecodedInst> inst = decode(ifid_.ir)) {
+            const Control cw = controlFor(inst->kind());
+            const PendingWrite loadInEx{idex_.valid && !idex_.fault && idex_.cw.memRead, idex_.inst.rd};
+            if (HazardUnit::loadUseHazard(*inst, cw, loadInEx))
+                stall = true;   // ID/EX receives a bubble
+            else
+                nextIdEx = {true, ifid_.pc, *inst, cw, regs_.read(inst->rs1), regs_.read(inst->rs2), std::nullopt};
+        }
+        else
+            nextIdEx = {true, ifid_.pc, {}, {}, 0, 0, Fault{FaultKind::IllegalInstruction, ifid_.pc, ifid_.ir}};
+    }
+
+    /*IF: a stall holds the PC and IF/ID*/
+    IfId nextIfId = ifid_;
+    if (!stall) {
+        nextIfId = {};
+        if (fetching_) {
+            if (imem_.contains(pc_)) {
+                nextIfId = {true, pc_, imem_.fetch(pc_), std::nullopt};
+                pc_ += 4;
+            }
+            else {
+                fetching_ = false;
+                if (pc_ != imem_.endAddress()) {
+                    const FaultKind kind = pc_ % 4 != 0 ? FaultKind::FetchMisaligned : FaultKind::FetchOutOfRange;
+                    nextIfId = {true, pc_, 0, Fault{kind, pc_, pc_}};
+                }
+            }
+        }
+    }
+
+    /*a taken branch or jump in EX: what IF fetched and ID decoded in this cycle is on the wrong path*/
+    if (redirect) {
+        events.flushed = static_cast<std::size_t>(nextIfId.valid) + static_cast<std::size_t>(nextIdEx.valid);
+        stats.flushes += events.flushed;
+        stats.redirects++;
+        nextIfId = {};
+        nextIdEx = {};
+        pc_ = *redirect;
+        fetching_ = true;
+    }
+    if (stall) {
+        stats.stalls++;
+        events.stalled = true;
+    }
+
+    ifid_ = nextIfId;
+    idex_ = nextIdEx;
+    exmem_ = nextExMem;
+    memwb_ = nextMemWb;
+    return std::nullopt;
 }
 
-void Pipeline::decodeStage(Tracer& tracer) {
-    if (!ifid_.valid)
-        return;
-    const std::optional<DecodedInst> inst = decode(ifid_.ir);
-    if (!inst) {
-        tracer.event("unknown instruction " + toHex(ifid_.ir) + " at " + toHex(ifid_.pc) + " is skipped");
-        ifid_.valid = false;
-        return;
-    }
-    const Control cw = controlFor(inst->kind());
-    if (hazards_.mustStall(*inst, cw)) {
-        ifid_.stall = true;     // ID/EX stays empty: a bubble enters the pipeline
-        return;
-    }
-    idex_ = {true, *inst, cw, ifid_.pc, regs_.read(inst->rs1), regs_.read(inst->rs2), nextTag_++};
-    hazards_.issue(*inst, cw, idex_.tag);
-    ifid_ = IfId{};
-}
-
-void Pipeline::executeStage(Tracer& tracer) {
-    if (!idex_.valid)
-        return;
-    const ExecuteResult ex = execute(idex_.inst, idex_.cw, idex_.pc, idex_.rs1, idex_.rs2);
-    exmem_ = {true, idex_.inst, idex_.cw, ex.value, idex_.rs2, idex_.tag};
-    idex_.valid = false;
-    if (ex.target) {
-        pc_.value = *ex.target;
-        pc_.valid = imem_.contains(*ex.target);
-        if (!pc_.valid && *ex.target != imem_.endAddress())
-            tracer.event("jump/branch target " + toHex(*ex.target) + " is outside the program");
-        /*the instruction fetched behind the branch is on the wrong path; it has not been decoded yet*/
-        ifid_ = IfId{};
-    }
-}
-
-void Pipeline::memoryStage(Tracer& tracer) {
-    if (!exmem_.valid)
-        return;
-    const Control& cw = exmem_.cw;
-    const uint32_t funct3 = exmem_.inst.spec->funct3;
-    uint32_t loadData = 0;
-    bool ok = true;
-    if (cw.memRead) {
-        const std::optional<uint32_t> value = dmem_.load(funct3, exmem_.aluOut);
-        ok = value.has_value();
-        loadData = value.value_or(0);
-    }
-    if (cw.memWrite)
-        ok = dmem_.store(funct3, exmem_.aluOut, exmem_.storeData);
-    if (!ok)
-        tracer.event("invalid memory access at address " + toHex(exmem_.aluOut) + " is ignored");
-    memwb_ = {true, exmem_.inst, cw, exmem_.aluOut, loadData, exmem_.tag};
-    exmem_.valid = false;
-}
-
-void Pipeline::writeBackStage() {
-    if (!memwb_.valid)
-        return;
-    if (memwb_.cw.regWrite) {
-        regs_.write(memwb_.inst.rd, memwb_.cw.memToReg ? memwb_.loadData : memwb_.aluOut);
-        hazards_.writeBack(memwb_.inst.rd, memwb_.tag);
-    }
-    memwb_.valid = false;
-    retired_++;
-}
-
-void Pipeline::traceState(Tracer& tracer) const {
-    tracer.stage("PC", std::to_string(pc_.value) + (pc_.valid ? "" : " (done)"));
+void Pipeline::trace(Tracer& tracer, const CycleEvents& events) const {
+    auto faultText = [](const std::optional<Fault>& fault) { return "FAULT: " + describe(*fault); };
+    tracer.stage("PC", std::to_string(pc_) + (fetching_ ? "" : " (not fetching)"));
     tracer.stage("IF/ID", !ifid_.valid ? "-"
-                          : "pc=" + std::to_string(ifid_.pc) + " ir=" + toHex(ifid_.ir) + (ifid_.stall ? "  STALL" : ""));
+                          : ifid_.fault ? faultText(ifid_.fault)
+                                        : "pc=" + std::to_string(ifid_.pc) + " ir=" + toHex(ifid_.ir));
     tracer.stage("ID/EX", !idex_.valid ? "-"
-                          : disassemble(idex_.inst) + "  pc=" + std::to_string(idex_.pc) + " rs1=" + signedValue(idex_.rs1)
-                                + " rs2=" + signedValue(idex_.rs2) + " " + toString(idex_.cw));
+                          : idex_.fault ? faultText(idex_.fault)
+                                        : disassemble(idex_.inst) + "  pc=" + std::to_string(idex_.pc)
+                                              + " rs1=" + signedValue(idex_.rs1) + " rs2=" + signedValue(idex_.rs2)
+                                              + " " + toString(idex_.cw));
     tracer.stage("EX/MEM", !exmem_.valid ? "-"
-                           : disassemble(exmem_.inst) + "  aluout=" + signedValue(exmem_.aluOut)
-                                 + " rs2=" + signedValue(exmem_.storeData));
-    tracer.stage("MEM/WB", !memwb_.valid ? "-"
-                           : disassemble(memwb_.inst) + "  aluout=" + signedValue(memwb_.aluOut)
-                                 + " ldout=" + signedValue(memwb_.loadData));
+                           : exmem_.fault ? faultText(exmem_.fault)
+                                          : disassemble(exmem_.inst) + "  aluout=" + signedValue(exmem_.aluOut)
+                                                + " rs2=" + signedValue(exmem_.storeData));
+    tracer.stage("MEM/WB", !memwb_.valid ? "-" : disassemble(memwb_.inst) + "  result=" + signedValue(memwb_.result));
+
+    std::string hazards;
+    auto add = [&](const std::string& text) { hazards += (hazards.empty() ? "" : "; ") + text; };
+    if (events.stalled)
+        add("load-use stall");
+    if (events.flushed != 0)
+        add("flushed " + std::to_string(events.flushed));
+    if (events.rs1 != ForwardSource::RegisterFile)
+        add(std::string("rs1 <- ") + toString(events.rs1));
+    if (events.rs2 != ForwardSource::RegisterFile)
+        add(std::string("rs2 <- ") + toString(events.rs2));
+    if (!hazards.empty())
+        tracer.stage("hazards", hazards);
 }
 
 }  // namespace rv
