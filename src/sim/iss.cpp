@@ -33,15 +33,16 @@ RunResult Iss::run(Tracer& tracer, std::size_t maxCycles) {
             return result;
         }
         stats.cycles++;
-        tracer.beginCycle(stats.cycles);
-        const uint32_t word = imem_.fetch(pc);
-        const std::optional<DecodedInst> inst = decode(word);
+        const std::optional<DecodedInst>& inst = imem_.decoded(pc);
         if (!inst) {
             result.outcome = Outcome::Faulted;
-            result.fault = Fault{FaultKind::IllegalInstruction, pc, word};
+            result.fault = Fault{FaultKind::IllegalInstruction, pc, imem_.fetch(pc)};
             return result;
         }
-        tracer.stage("EXEC", toHex(pc) + "  " + disassemble(*inst));
+        if (tracer.enabled()) {
+            tracer.beginCycle(stats.cycles);
+            tracer.stage("EXEC", toHex(pc) + "  " + disassemble(*inst));
+        }
         const Control control = controlFor(inst->kind());
         if (control.halt) {
             stats.retired++;

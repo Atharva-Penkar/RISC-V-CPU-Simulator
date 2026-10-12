@@ -28,19 +28,22 @@ private:
     std::array<uint32_t, 32> values_{};
 };
 
-/*read-only view of the program; it must outlive the memory*/
+/*the program, decoded once when it is loaded; words must outlive the memory*/
 class InstructionMemory {
 public:
-    explicit InstructionMemory(std::span<const uint32_t> words) : words_(words) {}
+    explicit InstructionMemory(std::span<const uint32_t> words);
 
     /*true for a word-aligned address inside the program*/
     bool contains(uint32_t address) const { return address % 4 == 0 && address / 4 < words_.size(); }
     uint32_t fetch(uint32_t address) const { return words_[address / 4]; }
+    /*the instruction at a contained address; nullopt for a word that is not an RV32I instruction*/
+    const std::optional<DecodedInst>& decoded(uint32_t address) const { return decoded_[address / 4]; }
     /*address just past the last instruction; reaching it ends the program*/
     uint32_t endAddress() const { return static_cast<uint32_t>(words_.size() * 4); }
 
 private:
     std::span<const uint32_t> words_;
+    std::vector<std::optional<DecodedInst>> decoded_;
 };
 
 enum class MemoryError : uint8_t { None, Misaligned, OutOfRange };
