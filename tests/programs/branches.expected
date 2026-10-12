@@ -1,0 +1,6 @@
+registers
+  x1  = 0xfffffffd  -3
+  x2  = 0x00000002  2
+  x6  = 0x00000001  1
+  x10 = 0x00000001  1
+memory

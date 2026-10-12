@@ -1,0 +1,15 @@
+registers
+  x1  = 0x00000008  8
+  x4  = 0xfffffffe  -2
+  x5  = 0xfffffffe  -2
+  x6  = 0x000000fe  254
+  x7  = 0xfffffffe  -2
+  x8  = 0xfffffffe  -2
+  x9  = 0x0000ffff  65535
+  x10 = 0xfffe0000  -131072
+  x11 = 0x0000007f  127
+  x12 = 0xfe007f00  -33521920
+memory
+  [0x000] = 0xfe007f00  -33521920
+  [0x008] = 0xfffffffe  -2
+  [0x00c] = 0xfffe0000  -131072
