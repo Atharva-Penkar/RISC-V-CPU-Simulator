@@ -109,7 +109,3 @@ tests/programs/  *.s programs with the expected final state (*.expected), run on
 
 To add a test program, write `name.s`, create `name.expected` with `rvsim --model iss name.s > name.expected`, and
 check the values by hand.
-
-## License
-
-MIT, see [LICENSE](LICENSE).
