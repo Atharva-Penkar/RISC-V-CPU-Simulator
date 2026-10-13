@@ -109,7 +109,7 @@ export default function Landing() {
         <section className={styles.hero}>
           <div className={styles.heroText}>
             <p className={`mono ${styles.kicker}`}>RV32IM · 5-stage pipeline · C++ simulator</p>
-            <h1 className={styles.headline}>Watch a RISC-V program move through a pipelined CPU, one clock cycle at a time.</h1>
+            <h1 className={styles.headline}>See a RISC-V CPU run your code, cycle by cycle.</h1>
             <p className={styles.lede}>
               Write assembly, run it on a cycle-accurate model of the classic IF, ID, EX, MEM, WB pipeline, and step
               through what every stage does: forwarding, stalls, flushes and every register and memory write,
