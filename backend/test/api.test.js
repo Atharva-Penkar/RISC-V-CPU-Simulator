@@ -150,6 +150,15 @@ describe("API", () => {
     assert.equal(slow.body.stats.memoryStalls, 2);
     assert.equal(slow.body.final.registers[2], 36);
 
+    const dependent = "addi x1, x0, 5\nadd x2, x1, x1";
+    const forwarded = await post(`${server.url}/api/simulate`, { source: dependent, forwarding: true });
+    const waited = await post(`${server.url}/api/simulate`, { source: dependent, forwarding: false });
+    assert.equal(forwarded.body.forwarding, true);
+    assert.equal(waited.body.forwarding, false);
+    assert.equal(waited.body.stats.stalls, 2);
+    assert.equal(waited.body.stats.cycles, forwarded.body.stats.cycles + 2);
+    assert.equal(waited.body.cycles[2].stall.reason, "no-forwarding");
+
     const looped = await post(`${server.url}/api/simulate`, { source: "l: jal x0, l", maxCycles: 25 });
     assert.equal(looped.body.outcome.status, "cycle-limit");
     assert.equal(looped.body.cycles.length, 25);
@@ -166,6 +175,9 @@ describe("API", () => {
       assert.equal(response.status, 400, JSON.stringify(latencies));
       assert.equal(response.body.error.code, "INVALID_LATENCIES");
     }
+    const badForwarding = await post(`${server.url}/api/simulate`, { source: "ebreak", forwarding: "no" });
+    assert.equal(badForwarding.status, 400);
+    assert.equal(badForwarding.body.error.code, "INVALID_FORWARDING");
     const invalid = await post(`${server.url}/api/simulate`, "{not json");
     assert.equal(invalid.status, 400);
     assert.equal(invalid.body.error.code, "INVALID_JSON");

@@ -15,6 +15,7 @@ export function useSimulation() {
   const source = useAppState((s) => s.source);
   const maxCycles = useAppState((s) => s.maxCycles);
   const latencies = useAppState((s) => s.latencies);
+  const forwarding = useAppState((s) => s.forwarding);
   const runId = useAppState((s) => s.runId);
 
   useEffect(() => {
@@ -26,7 +27,7 @@ export function useSimulation() {
     const timer = setTimeout(async () => {
       actions.runStarted();
       try {
-        actions.runSucceeded(await simulate(source, { maxCycles, latencies, signal: controller.signal }));
+        actions.runSucceeded(await simulate(source, { maxCycles, latencies, forwarding, signal: controller.signal }));
       } catch (error) {
         if (isAbortError(error)) return;
         const diagnostics = assemblyDiagnostics(error);
@@ -40,5 +41,5 @@ export function useSimulation() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [source, maxCycles, latencies, runId]);
+  }, [source, maxCycles, latencies, forwarding, runId]);
 }

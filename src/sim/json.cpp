@@ -330,8 +330,9 @@ void writeCycle(JsonWriter& json, const CycleRecord& cycle) {
     json.key("stall");
     if (cycle.stall)
         json.beginObject()
+            .key("reason").string(cycle.stall->reason == StallReason::LoadUse ? "load-use" : "no-forwarding")
             .key("waiting").number(n(cycle.stall->waiting))
-            .key("load").number(n(cycle.stall->load))
+            .key("producer").number(n(cycle.stall->producer))
             .key("register").number(n(cycle.stall->reg.index()))
             .endObject();
     else
@@ -425,7 +426,8 @@ std::string toJson(const Timeline& timeline) {
     json.beginObject();
     header(json, "rv-timeline", true);
     json.key("model").string("pipeline");
-    const Latencies& latencies = timeline.latencies();
+    json.key("forwarding").boolean(timeline.config().forwarding);
+    const Latencies& latencies = timeline.config().latencies;
     json.key("latencies").beginObject()
         .key("multiply").number(n(latencies.multiply))
         .key("divide").number(n(latencies.divide))

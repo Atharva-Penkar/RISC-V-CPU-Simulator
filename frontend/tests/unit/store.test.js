@@ -106,6 +106,16 @@ describe("latencies", () => {
   });
 });
 
+describe("forwarding", () => {
+  test("is on by default; turning it off marks the run stale", () => {
+    const store = storeWithRun();
+    assert.equal(store.getState().forwarding, true);
+    store.actions.setForwarding(false);
+    assert.equal(store.getState().forwarding, false);
+    assert.equal(store.getState().stale, true);
+  });
+});
+
 describe("loaded example", () => {
   test("is kept while the program is unchanged and dropped on the first edit", () => {
     const store = createAppStore();

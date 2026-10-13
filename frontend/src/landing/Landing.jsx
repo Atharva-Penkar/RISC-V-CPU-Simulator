@@ -74,7 +74,7 @@ const PANELS = [
   ["Pipeline", "The five stages and the instruction in each, with bubbles, stalls, flushes, forwarding and the next PC."],
   ["Timing chart", "One row per executed instruction and one column per cycle, as in a textbook pipeline diagram. Click any cell to go to that cycle."],
   ["What happened", "Every event of the current cycle in plain English: write backs, memory accesses, forwarding, stalls, flushes."],
-  ["State", "Registers and data memory at the current cycle, in hex, signed or unsigned. What changed this cycle is highlighted."],
+  ["State", "Registers and data memory at the current cycle, in hex, signed or unsigned. Registers the program has written are marked, and what changed this cycle is highlighted."],
   ["Statistics", "Cycles, instructions, CPI, stalls, flushes, and how the program ended."],
 ];
 
@@ -198,10 +198,12 @@ export default function Landing() {
               </p>
             </li>
             <li>
-              <h3>Change the timing</h3>
+              <h3>Change the pipeline</h3>
               <p>
-                The <span className="mono">timing</span> menu sets how many cycles a multiply, a divide, a load and a
-                store take. See <a href="#timing">the timing model</a> below.
+                The <span className="mono">pipeline</span> menu turns forwarding off, so every dependent instruction
+                waits for write back, and sets how many cycles a multiply, a divide, a load and a store take. Run the
+                same program both ways and compare the cycles and CPI to see what each piece of hardware is worth. See{" "}
+                <a href="#timing">the timing model</a> below.
               </p>
             </li>
           </ol>
@@ -282,7 +284,7 @@ loop:   add  x2, x2, x1
                 memory can take longer than one cycle to answer.
               </p>
               <p>
-                In the <span className="mono">timing</span> menu you can make a multiply or divide stay in EX, and a load
+                In the <span className="mono">pipeline</span> menu you can make a multiply or divide stay in EX, and a load
                 or store stay in MEM, for up to 100 cycles. While it is busy, the stages behind it hold their
                 instructions and bubbles move on to the stages ahead, so the cost appears in the timing chart, the
                 statistics and the CPI. The results never change, only when they arrive.

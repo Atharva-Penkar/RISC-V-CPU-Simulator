@@ -90,7 +90,7 @@ src/
     timing-chart/      rows = instructions, columns = cycles
     controls/          transport bar (with keyboard shortcuts) and scrubber
     datapath/          the five stages this cycle (simplified until the datapath SVG)
-    settings/          the timing menu: cycles for multiply, divide, load and store
+    settings/          the pipeline menu: forwarding on or off, cycles for multiply, divide, load and store
     machine/           registers and memory panel with tabs and number format
     registers/  memory/  event-log/  stats/  examples/
   components/          shared UI: Panel, InstructionChip

@@ -53,6 +53,7 @@ export const DEMO_EXAMPLE = { id: "demo", description: "Sums 4 + 3 + 2 + 1 into 
  * @property {Example | null} example  the example in the editor, until it is edited
  * @property {number} maxCycles      cycle limit sent with each run
  * @property {Latencies} latencies   cycles a multiply/divide spends in EX and a load/store in MEM
+ * @property {boolean} forwarding    results are forwarded into EX; off, dependent instructions wait for write back
  * @property {number} runId          bumped by retry() to run the same source again
  * @property {RunStatus} status      state of the latest run
  * @property {Diagnostic[]} diagnostics  assembly errors of the latest run
@@ -72,6 +73,7 @@ function initialState() {
     example: DEMO_EXAMPLE,
     maxCycles: DEFAULT_MAX_CYCLES,
     latencies: IDEAL_LATENCIES,
+    forwarding: true,
     runId: 0,
     status: "idle",
     diagnostics: [],
@@ -148,6 +150,14 @@ export function createAppStore(overrides = {}) {
       const latencies = { ...state.latencies, ...change };
       const same = Object.keys(latencies).every((key) => latencies[key] === state.latencies[key]);
       if (!same) set({ latencies, stale: state.timeline !== null });
+    },
+
+    /**
+     * Turns the forwarding paths on or off; the program runs again.
+     * @param {boolean} forwarding
+     */
+    setForwarding(forwarding) {
+      if (forwarding !== state.forwarding) set({ forwarding, stale: state.timeline !== null });
     },
 
     /** Runs the current source again, e.g. after a network error. */

@@ -74,8 +74,9 @@
 
 /**
  * @typedef {object} Stall
+ * @property {"load-use" | "no-forwarding"} reason  a load in EX not done yet, or any producer while forwarding is off
  * @property {number} waiting   instance held in ID
- * @property {number} load      the load in EX
+ * @property {number} producer  the older instance (in EX or MEM) that writes the register
  * @property {number} register
  */
 
@@ -187,6 +188,7 @@
  * @property {true} ok
  * @property {"pipeline"} model
  * @property {Latencies} latencies
+ * @property {boolean} forwarding   false: no forwarding paths; dependent instructions wait for write back
  * @property {{ instructions: Instruction[] }} program
  * @property {Instance[]} instances  instances[i].id === i
  * @property {Cycle[]} cycles        cycles[i].cycle === i + 1

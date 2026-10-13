@@ -115,8 +115,11 @@ export function explainEvent(timeline, event) {
         : `MEM: the ${access} ${name(busy.instance)} completes its memory access (${progress}).`;
     }
     case "stall": {
-      const { stall } = event;
-      return `Load-use stall: ${name(stall.waiting)} waits in ID because it needs ${registerName(stall.register)}, which the load ${name(stall.load)} only reads from memory in MEM next cycle. A bubble enters EX and the PC holds.`;
+      const { stall, producerStage } = event;
+      if (stall.reason === "load-use") {
+        return `Load-use stall: ${name(stall.waiting)} waits in ID because it needs ${registerName(stall.register)}, which the load ${name(stall.producer)} only reads from memory in MEM next cycle. A bubble enters EX and the PC holds.`;
+      }
+      return `Data hazard stall: ${name(stall.waiting)} waits in ID because it needs ${registerName(stall.register)}, which ${name(stall.producer)} (in ${producerStage}) has not written back yet. Forwarding is off, so the value only arrives through the register file once the producer reaches WB. A bubble enters EX and the PC holds.`;
     }
     case "flush": {
       const { flush } = event;

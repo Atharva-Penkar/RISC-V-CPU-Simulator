@@ -15,6 +15,7 @@ namespace rv {
 
 class Timeline;
 enum class BubbleReason : uint8_t;
+enum class StallReason : uint8_t;
 
 inline constexpr std::size_t kMaxCycles = 10000;    // guards against programs that never terminate
 
@@ -33,6 +34,14 @@ struct Latencies {
         return ok(multiply) && ok(divide) && ok(load) && ok(store);
     }
     bool operator==(const Latencies&) const = default;
+};
+
+/*how the pipeline is built: the latencies of the slow operations, and whether results are forwarded into
+EX. Without forwarding, an instruction waits in ID until every older instruction it reads from has reached
+WB (the register file is written in the first half of the cycle and read in the second)*/
+struct PipelineConfig {
+    Latencies latencies;
+    bool forwarding = true;
 };
 
 struct Control {
@@ -106,6 +115,9 @@ public:
     /*the newest older instruction that writes source wins; x0 is never forwarded*/
     static ForwardSource forward(Reg source, const PendingWrite& exMem, const PendingWrite& memWb);
 
+    /*the instruction in ID reads a register that write will change; x0 never counts*/
+    static bool dependsOn(const DecodedInst& inId, const Control& idControl, const PendingWrite& write);
+
     /*the instruction in ID needs a register the load in EX has not read from memory yet:
     it must wait one cycle, after which MEM/WB forwarding supplies the value*/
     static bool loadUseHazard(const DecodedInst& inId, const Control& idControl, const PendingWrite& loadInEx);
@@ -123,7 +135,7 @@ std::string toString(Outcome outcome);
 struct RunStats {
     std::size_t cycles = 0;
     std::size_t retired = 0;        // instructions that completed
-    std::size_t stalls = 0;         // cycles a load-use hazard held the pipeline
+    std::size_t stalls = 0;         // cycles a data hazard held ID: load-use, or any dependency without forwarding
     std::size_t executeStalls = 0;  // cycles a multi-cycle multiply or divide held EX and the stages behind it
     std::size_t memoryStalls = 0;   // cycles a multi-cycle load or store held MEM and the stages behind it
     std::size_t flushes = 0;        // wrong-path instructions discarded
@@ -159,10 +171,11 @@ private:
 followed by a dependent instruction, and branches and jumps resolved in EX, which flush IF/ID and ID/EX.
 Faults and halts take effect when the instruction reaches MEM, so they are precise: every older
 instruction completes and no younger one has changed any state. Multiply, divide, load and store can
-take several cycles (Latencies); the busy stage holds the stages behind it*/
+take several cycles (Latencies); the busy stage holds the stages behind it. With forwarding turned off,
+dependent instructions wait in ID until the value is written back*/
 class Pipeline {
 public:
-    explicit Pipeline(InstructionMemory program, Latencies latencies = {});
+    explicit Pipeline(InstructionMemory program, PipelineConfig config = {});
 
     RunResult run(Tracer& tracer, std::size_t maxCycles = kMaxCycles);
 
@@ -221,6 +234,7 @@ private:
     /*what happened in one cycle, for the trace*/
     struct CycleEvents {
         bool stalled = false;
+        StallReason stallReason{};
         bool executeBusy = false;
         bool memoryBusy = false;
         std::size_t flushed = 0;
@@ -243,7 +257,7 @@ private:
     InstructionMemory imem_;
     RegisterFile regs_;
     DataMemory dmem_;
-    Latencies latencies_;
+    PipelineConfig config_;
     uint32_t pc_ = 0;
     bool fetching_ = false;     // false once the PC has run past the program
     unsigned executeCycles_ = 0;    // cycles the instruction in ID/EX has already spent in EX

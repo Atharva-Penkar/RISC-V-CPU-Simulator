@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 
 import { actions, IDEAL_LATENCIES, MAX_LATENCY, TYPICAL_LATENCIES, useAppState } from "../../state/store.js";
-import styles from "./TimingSettings.module.css";
+import styles from "./PipelineSettings.module.css";
 
 /** @typedef {import("../../timeline/types.js").Latencies} Latencies */
 
@@ -70,29 +70,57 @@ function LatencyField({ field, value }) {
 }
 
 /**
- * The Timing menu: how many cycles multiplies and divides spend in EX, and loads and stores in MEM.
- * Opens as a popover (light dismiss: Escape or a click outside closes it); every change runs the program again.
+ * The pipeline menu: forwarding on or off, and how many cycles multiplies and divides spend in EX and loads
+ * and stores in MEM. Opens as a popover (light dismiss: Escape or a click outside closes it); every change
+ * runs the program again, so the statistics show what each piece of hardware is worth.
  */
-export default function TimingSettings() {
+export default function PipelineSettings() {
   const latencies = useAppState((s) => s.latencies);
+  const forwarding = useAppState((s) => s.forwarding);
   const popoverId = useId();
   const titleId = useId();
+  const forwardingId = useId();
   const ideal = same(latencies, IDEAL_LATENCIES);
+  const standard = ideal && forwarding;
 
   return (
     <>
-      <button type="button" className={`mono ${styles.trigger}`} popoverTarget={popoverId} aria-label={`Timing: ${ideal ? "every stage one cycle" : "custom"}`}>
-        timing{!ideal && <span className={styles.dot} aria-hidden="true" />}
+      <button
+        type="button"
+        className={`mono ${styles.trigger}`}
+        popoverTarget={popoverId}
+        aria-label={`Pipeline options: ${standard ? "standard" : "changed"}`}
+      >
+        pipeline{!standard && <span className={styles.dot} aria-hidden="true" />}
       </button>
       <div id={popoverId} popover="auto" className={styles.popover} role="dialog" aria-labelledby={titleId}>
         <div className={styles.header}>
           <h2 id={titleId} className={`mono ${styles.title}`}>
-            Cycles per operation
+            Pipeline options
           </h2>
           <button type="button" className={`mono ${styles.close}`} popoverTarget={popoverId} popoverTargetAction="hide" aria-label="Close">
             ✕
           </button>
         </div>
+        <div className={styles.switchRow}>
+          <label htmlFor={forwardingId} className={styles.label}>
+            Forwarding
+            <span className={styles.hint}>
+              {forwarding
+                ? "Results go straight from EX/MEM and MEM/WB into EX. Only a load followed by its use stalls."
+                : "Off: an instruction waits in ID until every value it reads has been written back. Compare the cycles and CPI."}
+            </span>
+          </label>
+          <input
+            id={forwardingId}
+            type="checkbox"
+            role="switch"
+            className={styles.switch}
+            checked={forwarding}
+            onChange={(event) => actions.setForwarding(event.target.checked)}
+          />
+        </div>
+        <h3 className={`mono ${styles.subtitle}`}>Cycles per operation</h3>
         <p className={styles.intro}>
           A multiply or divide stays in EX, and a load or store in MEM, for this many cycles. Until it is done, the
           stages behind it hold their instructions and bubbles move on, so the cost shows up in the timing chart and the

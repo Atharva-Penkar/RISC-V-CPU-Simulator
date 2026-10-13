@@ -17,13 +17,16 @@ namespace {
 
 constexpr std::string_view kUsage =
     "usage: rvsim [--model pipeline|iss] [--trace | --json] [--no-stats] [--max-cycles N]\n"
-    "             [--mul-latency N] [--div-latency N] [--load-latency N] [--store-latency N] [input.s | input.hex]\n"
+    "             [--mul-latency N] [--div-latency N] [--load-latency N] [--store-latency N] [--no-forwarding]\n"
+    "             [input.s | input.hex]\n"
     "  reads assembly from standard input when no input file is given\n"
     "  .hex input holds one hexadecimal instruction word per line (rvasm output)\n"
     "  --no-stats   print only the final registers and memory\n"
     "  --mul-latency, --div-latency, --load-latency, --store-latency N\n"
     "               cycles a multiply or divide spends in EX, or a load or store in MEM (1 to 100,\n"
     "               default 1); the busy stage holds the stages behind it. Pipeline model only\n"
+    "  --no-forwarding  turn off forwarding: dependent instructions wait in ID until the value is\n"
+    "               written back. Pipeline model only\n"
     "  --json       print the whole pipeline run as one JSON document (docs/timeline-format.md),\n"
     "               including assembly errors; the exit status is the same as without it\n"
     "  exit status: 0 finished or halted, 1 bad input, 2 cycle limit reached, 3 fault\n";
@@ -67,7 +70,7 @@ void printStats(const rv::RunResult& result, std::ostream& out) {
     out << "\n  cycles        " << stats.cycles
         << "\n  instructions  " << stats.retired
         << "\n  CPI           " << std::fixed << std::setprecision(2) << stats.cpi()
-        << "\n  stalls        " << plural(stats.stalls, "cycle") << " (load-use)";
+        << "\n  stalls        " << plural(stats.stalls, "cycle") << " (data hazards)";
     if (stats.executeStalls != 0)
         out << ", " << plural(stats.executeStalls, "cycle") << " (EX busy)";
     if (stats.memoryStalls != 0)
@@ -116,8 +119,9 @@ int main(int argc, char** argv) {
     bool stats = true;
     bool json = false;
     std::size_t maxCycles = rv::kMaxCycles;
-    rv::Latencies latencies;
-    bool latencyGiven = false;
+    rv::PipelineConfig config;
+    rv::Latencies& latencies = config.latencies;
+    bool pipelineOptionGiven = false;
     auto parseCount = [](std::string_view value, auto& out) {
         auto [end, ec] = std::from_chars(value.data(), value.data() + value.size(), out);
         return ec == std::errc{} && end == value.data() + value.size();
@@ -130,11 +134,15 @@ int main(int argc, char** argv) {
                           : arg == "--store-latency"   ? &latencies.store
                                                        : nullptr;
         if (latency && i + 1 < argc) {
-            latencyGiven = true;
+            pipelineOptionGiven = true;
             if (!parseCount(argv[++i], *latency)) {
                 std::cerr << kUsage;
                 return 1;
             }
+        }
+        else if (arg == "--no-forwarding") {
+            config.forwarding = false;
+            pipelineOptionGiven = true;
         }
         else if (arg == "--trace")
             trace = true;
@@ -162,7 +170,7 @@ int main(int argc, char** argv) {
         }
     }
     if ((model != "pipeline" && model != "iss") || (json && (model != "pipeline" || trace)) || !latencies.valid()
-        || (latencyGiven && model != "pipeline")) {
+        || (pipelineOptionGiven && model != "pipeline")) {
         std::cerr << kUsage;
         return 1;
     }
@@ -200,11 +208,11 @@ int main(int argc, char** argv) {
     }
 
     if (json) {
-        const rv::Timeline timeline = rv::recordPipeline(std::move(assembled), maxCycles, latencies);
+        const rv::Timeline timeline = rv::recordPipeline(std::move(assembled), maxCycles, config);
         std::cout << rv::toJson(timeline) << '\n';
         return exitStatus(timeline.result(), maxCycles, false);
     }
     const rv::InstructionMemory program(assembled.words);
     return model == "iss" ? simulate(rv::Iss(program), trace, stats, maxCycles)
-                          : simulate(rv::Pipeline(program, latencies), trace, stats, maxCycles);
+                          : simulate(rv::Pipeline(program, config), trace, stats, maxCycles);
 }

@@ -42,6 +42,13 @@ describe("explainCycle", () => {
     assert.match(text, /MEM: the load I4 LW x4, 0\[x0\] completes its memory access \(cycle 2 of 2\)/);
   });
 
+  test("explains data hazard stalls without forwarding", () => {
+    const text = allText(loadTimeline("no-forwarding"));
+    assert.match(text, /Data hazard stall: I1 ADDI x2, x1, 5 waits in ID because it needs x1, which I0 ADDI x1, x0, 10 \(in EX\) has not written back yet\. Forwarding is off/);
+    assert.match(text, /which I0 ADDI x1, x0, 10 \(in MEM\)/);
+    assert.doesNotMatch(text, /Forwarding: /);
+  });
+
   test("marks repeated executions", () => {
     const timeline = loadTimeline("loop");
     const repeat = timeline.instances.find((i) => i.occurrence === 2);

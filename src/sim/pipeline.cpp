@@ -22,7 +22,7 @@ const char* toString(ForwardSource source) {
 
 }  // namespace
 
-Pipeline::Pipeline(InstructionMemory program, Latencies latencies) : imem_(program), latencies_(latencies) {
+Pipeline::Pipeline(InstructionMemory program, PipelineConfig config) : imem_(program), config_(config) {
     fetching_ = imem_.contains(0);
 }
 
@@ -30,9 +30,9 @@ unsigned Pipeline::executeLatency(const IdEx& latch) const {
     if (!latch.valid || latch.fault)
         return 1;
     if (isMultiply(latch.inst.spec->alu))
-        return latencies_.multiply;
+        return config_.latencies.multiply;
     if (isDivide(latch.inst.spec->alu))
-        return latencies_.divide;
+        return config_.latencies.divide;
     return 1;
 }
 
@@ -40,9 +40,9 @@ unsigned Pipeline::memoryLatency(const ExMem& latch) const {
     if (!latch.valid || latch.fault)
         return 1;
     if (latch.cw.memRead)
-        return latencies_.load;
+        return config_.latencies.load;
     if (latch.cw.memWrite)
-        return latencies_.store;
+        return config_.latencies.store;
     return 1;
 }
 
@@ -238,7 +238,7 @@ std::optional<Outcome> Pipeline::cycle(CycleEvents& events) {
             const PendingWrite fromExMem = pendingWrite(exmem_);
             const PendingWrite fromMemWb = pendingWrite(memwb_);
             auto operand = [&](Operand which, Reg source, uint32_t registerValue, ForwardSource& used) {
-                used = HazardUnit::forward(source, fromExMem, fromMemWb);
+                used = config_.forwarding ? HazardUnit::forward(source, fromExMem, fromMemWb) : ForwardSource::RegisterFile;
                 uint32_t value = registerValue;
                 if (used == ForwardSource::ExMem)
                     value = exmem_.aluOut;
@@ -275,7 +275,8 @@ std::optional<Outcome> Pipeline::cycle(CycleEvents& events) {
     else
         nextExMem.bubble = idex_.bubble;
 
-    /*ID: decode and read registers; a load in EX whose result is needed here costs one stall cycle.
+    /*ID: decode and read registers; a load in EX whose result is needed here costs one stall cycle, and
+    without forwarding so does every older instruction in EX or MEM that writes a register read here.
     While EX keeps its instruction (busy, or waiting for a busy MEM), ID and IF hold theirs*/
     IdEx nextIdEx;
     bool stall = false;
@@ -291,12 +292,23 @@ std::optional<Outcome> Pipeline::cycle(CycleEvents& events) {
             nextIdEx = {true, ifid_.pc, {}, {}, 0, 0, ifid_.fault, ifid_.instance, std::nullopt};
         else if (const std::optional<DecodedInst>& inst = imem_.decoded(ifid_.pc)) {
             const Control cw = controlFor(inst->kind());
-            const PendingWrite loadInEx{idex_.valid && !idex_.fault && idex_.cw.memRead, idex_.inst.rd};
-            if (HazardUnit::loadUseHazard(*inst, cw, loadInEx)) {
+            const PendingWrite inEx{idex_.valid && !idex_.fault && idex_.cw.regWrite, idex_.inst.rd};
+            const PendingWrite inMem = pendingWrite(exmem_);
+            std::optional<StallRecord> hazard;
+            if (config_.forwarding) {
+                if (idex_.cw.memRead && HazardUnit::loadUseHazard(*inst, cw, inEx))
+                    hazard = StallRecord{StallReason::LoadUse, ifid_.instance, idex_.instance, idex_.inst.rd};
+            }
+            else if (HazardUnit::dependsOn(*inst, cw, inEx))
+                hazard = StallRecord{StallReason::NoForwarding, ifid_.instance, idex_.instance, idex_.inst.rd};
+            else if (HazardUnit::dependsOn(*inst, cw, inMem))
+                hazard = StallRecord{StallReason::NoForwarding, ifid_.instance, exmem_.instance, exmem_.inst.rd};
+            if (hazard) {
                 stall = true;
+                events.stallReason = hazard->reason;
                 nextIdEx.bubble = BubbleReason::Stall;
                 if (record) {
-                    record->stall = StallRecord{ifid_.instance, idex_.instance, idex_.inst.rd};
+                    record->stall = hazard;
                     record->stages[index(Stage::ID)].stalled = true;
                 }
             }
@@ -415,7 +427,7 @@ void Pipeline::trace(Tracer& tracer, const CycleEvents& events) const {
     std::string hazards;
     auto add = [&](const std::string& text) { hazards += (hazards.empty() ? "" : "; ") + text; };
     if (events.stalled)
-        add("load-use stall");
+        add(events.stallReason == StallReason::LoadUse ? "load-use stall" : "data hazard stall (no forwarding)");
     if (events.executeBusy)
         add("EX busy (multiply/divide)");
     if (events.memoryBusy)

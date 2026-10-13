@@ -49,13 +49,22 @@ function readLatencies(body) {
   return args;
 }
 
+/** Optional "forwarding": false runs the pipeline without forwarding paths. */
+function readForwarding(body) {
+  const forwarding = body.forwarding ?? true;
+  if (typeof forwarding !== "boolean") {
+    throw new ApiError(400, "INVALID_FORWARDING", '"forwarding" must be true or false.');
+  }
+  return forwarding ? [] : ["--no-forwarding"];
+}
+
 /**
  * The HTTP API:
  *   GET  /api/health          simulator availability and limits
  *   GET  /api/examples        example programs
  *   GET  /api/examples/:id    one example program
  *   POST /api/assemble        { source } -> "rv-program" document
- *   POST /api/simulate        { source, maxCycles?, latencies? } -> "rv-timeline" document
+ *   POST /api/simulate        { source, maxCycles?, latencies?, forwarding? } -> "rv-timeline" document
  * Errors are { error: { code, message, details? } }; assembly errors are 422 with the diagnostics as details.
  */
 export function createApp({ config, simulator, examples }) {
@@ -105,8 +114,8 @@ export function createApp({ config, simulator, examples }) {
   app.post("/api/simulate", async (req, res) => {
     const source = readSource(req.body, config);
     const maxCycles = readMaxCycles(req.body, config);
-    const latencyArgs = readLatencies(req.body);
-    res.json(await simulator.simulate(source, maxCycles, latencyArgs));
+    const pipelineArgs = [...readLatencies(req.body), ...readForwarding(req.body)];
+    res.json(await simulator.simulate(source, maxCycles, pipelineArgs));
   });
 
   app.use((req, res) => {

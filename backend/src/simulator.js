@@ -161,10 +161,10 @@ export class Simulator {
 
   /**
    * Runs source on the pipeline: the "rv-timeline" document with every cycle recorded.
-   * latencyArgs are rvsim options such as ["--mul-latency", "3"].
+   * pipelineArgs are rvsim options such as ["--mul-latency", "3", "--no-forwarding"].
    */
-  async simulate(source, maxCycles, latencyArgs = []) {
-    const args = ["--json", "--max-cycles", String(maxCycles), ...latencyArgs];
+  async simulate(source, maxCycles, pipelineArgs = []) {
+    const args = ["--json", "--max-cycles", String(maxCycles), ...pipelineArgs];
     const result = await this.run(this.config.rvsimPath, args, source);
     return checkDocument(parseDocument(result, "rvsim"), "rv-timeline", result, "rvsim");
   }

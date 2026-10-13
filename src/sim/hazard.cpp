@@ -12,10 +12,14 @@ ForwardSource HazardUnit::forward(Reg source, const PendingWrite& exMem, const P
     return ForwardSource::RegisterFile;
 }
 
-bool HazardUnit::loadUseHazard(const DecodedInst& inId, const Control& idControl, const PendingWrite& loadInEx) {
-    if (!loadInEx.valid || loadInEx.rd.index() == 0)
+bool HazardUnit::dependsOn(const DecodedInst& inId, const Control& idControl, const PendingWrite& write) {
+    if (!write.valid || write.rd.index() == 0)
         return false;
-    return (idControl.readsRs1 && inId.rs1 == loadInEx.rd) || (idControl.readsRs2 && inId.rs2 == loadInEx.rd);
+    return (idControl.readsRs1 && inId.rs1 == write.rd) || (idControl.readsRs2 && inId.rs2 == write.rd);
+}
+
+bool HazardUnit::loadUseHazard(const DecodedInst& inId, const Control& idControl, const PendingWrite& loadInEx) {
+    return dependsOn(inId, idControl, loadInEx);
 }
 
 }  // namespace rv

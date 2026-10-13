@@ -82,7 +82,9 @@ export default function Datapath() {
           ))}
           {record.stall && (
             <li className={styles.stallText}>
-              stall: {registerName(record.stall.register)} not loaded yet; bubble into EX
+              stall: {registerName(record.stall.register)}{" "}
+              {record.stall.reason === "load-use" ? "not loaded yet" : "not written back yet (forwarding off)"}; bubble
+              into EX
             </li>
           )}
           {record.busy.map((b) => (

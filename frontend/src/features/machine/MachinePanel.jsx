@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import Panel from "../../components/Panel.jsx";
 import { changesAt, stateAt } from "../../timeline/machineState.js";
+import { writtenRegisters } from "../../timeline/selectors.js";
 import { actions, useAppState } from "../../state/store.js";
 import MemoryPanel from "../memory/MemoryPanel.jsx";
 import RegisterPanel from "../registers/RegisterPanel.jsx";
@@ -24,6 +25,7 @@ export default function MachinePanel() {
 
   const snapshot = useMemo(() => (timeline ? stateAt(timeline, cycle) : null), [timeline, cycle]);
   const changes = useMemo(() => (timeline ? changesAt(timeline, cycle) : null), [timeline, cycle]);
+  const written = useMemo(() => (timeline ? writtenRegisters(timeline, cycle) : new Set()), [timeline, cycle]);
   const record = timeline?.cycles[cycle - 1] ?? null;
 
   const controls = (
@@ -53,7 +55,7 @@ export default function MachinePanel() {
       {!snapshot || !changes ? (
         <p className={styles.empty}>Register and memory values appear when the program has run.</p>
       ) : view === "registers" ? (
-        <RegisterPanel registers={snapshot.registers} changed={changes.registers} write={record?.registerWrite ?? null} radix={radix} />
+        <RegisterPanel registers={snapshot.registers} written={written} changed={changes.registers} write={record?.registerWrite ?? null} radix={radix} />
       ) : (
         <MemoryPanel words={snapshot.memory} access={record?.memory ?? null} radix={radix} />
       )}

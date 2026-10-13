@@ -37,6 +37,9 @@ values are applied together at the end, like a clock edge.
   `--load-latency` and `--store-latency` (1 to 100) make multiplies and divides spend that many cycles in EX, and
   loads and stores in MEM. The busy stage keeps its instruction, everything behind it waits, and a bubble moves on,
   so a slow divider or memory shows up directly in the cycle count and CPI.
+- **Forwarding switch:** `--no-forwarding` removes the forwarding paths, so an instruction waits in ID until every
+  older instruction it reads from has written back (two cycles behind its neighbour, one cycle two behind).
+  Comparing the cycle counts with and without it shows what forwarding saves.
 - **Cycle limit:** a program stops after 10000 cycles by default (`--max-cycles`), so an infinite loop can't hang
   the simulator.
 
@@ -51,7 +54,7 @@ statistics
   cycles        19
   instructions  11
   CPI           1.73
-  stalls        2 cycles (load-use)
+  stalls        2 cycles (data hazards)
   flushes       2 instructions (1 taken branch/jump)
 ```
 
@@ -88,6 +91,7 @@ build/rvsim --trace tests/programs/forwarding.s       # pipeline registers, stal
 build/rvsim --model iss fib.hex                       # reference model, machine code input
 build/rvsim --json tests/programs/forwarding.s        # every cycle as JSON (pipeline model)
 build/rvsim --mul-latency 3 --div-latency 32 tests/programs/multiply.s   # slow multiplier and divider
+build/rvsim --no-forwarding tests/programs/forwarding.s   # every dependency waits for write back
 build/rvasm --json tests/programs/forwarding.s        # instructions with their source map
 ```
 

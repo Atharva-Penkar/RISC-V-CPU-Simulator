@@ -9,6 +9,7 @@ import {
   stageOccupancy,
   STAGES,
   timingRows,
+  writtenRegisters,
 } from "../../src/timeline/selectors.js";
 import { loadTimeline, timelineFixtureNames } from "./fixtures.js";
 
@@ -129,6 +130,20 @@ describe("multi-cycle operations", () => {
     const holding = timeline.cycles.filter((c) => c.stall || c.busy.some((b) => b.cycle < b.of)).length;
     assert.equal(scrubberMarks(timeline).filter((m) => m.stall).length, holding);
     assert.equal(holding, timeline.stats.stalls + timeline.stats.executeStalls + timeline.stats.memoryStalls);
+  });
+});
+
+describe("writtenRegisters", () => {
+  test("grows as the program writes registers, never includes x0, and ends with every register written", () => {
+    const timeline = loadTimeline("hazards");
+    assert.equal(writtenRegisters(timeline, 0).size, 0);
+    const firstWrite = /** @type {import("../../src/timeline/types.js").Cycle} */ (timeline.cycles.find((c) => c.registerWrite));
+    assert.deepEqual([...writtenRegisters(timeline, firstWrite.cycle)], [firstWrite.registerWrite?.register]);
+    assert.equal(writtenRegisters(timeline, firstWrite.cycle - 1).size, 0);
+    const all = writtenRegisters(timeline, timeline.cycles.length);
+    assert.ok(!all.has(0), "hazards.s writes x0, which does not count");
+    const expected = new Set(timeline.cycles.flatMap((c) => (c.registerWrite && c.registerWrite.register !== 0 ? [c.registerWrite.register] : [])));
+    assert.deepEqual(all, expected);
   });
 });
 

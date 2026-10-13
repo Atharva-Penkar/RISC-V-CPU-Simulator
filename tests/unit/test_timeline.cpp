@@ -82,7 +82,9 @@ void addTimelineTests(Suite& suite) {
     suite.add("load-use stall record and bubble", [] {
         const rv::Timeline t = recordOrFail("lw x1,0[x0]; add x2,x1,x1");
         const auto& stall = t.at(3).stall;
-        expect(stall && stall->waiting == 1 && stall->load == 0 && stall->reg.index() == 1, "stall record");
+        expect(stall && stall->reason == rv::StallReason::LoadUse && stall->waiting == 1 && stall->producer == 0
+                   && stall->reg.index() == 1,
+               "stall record");
         expect(slot(t, 3, Stage::ID).stalled, "ID marked stalled");
         expect(t.at(3).nextPcSource == rv::NextPcSource::Hold, "a stall holds the PC");
         expect(isBubble(t, 4, Stage::EX, rv::BubbleReason::Stall), "bubble in EX");
@@ -174,7 +176,7 @@ void addTimelineTests(Suite& suite) {
     suite.add("busy records and held stages for multi-cycle operations", [] {
         auto assembled = rv::assembleWithSourceMap("addi x1,x0,6; mul x2,x1,x1; addi x3,x0,1; addi x4,x0,2");
         expect(assembled.has_value());
-        const rv::Timeline t = rv::recordPipeline(std::move(*assembled), rv::kMaxCycles, {3, 1, 1, 1});
+        const rv::Timeline t = rv::recordPipeline(std::move(*assembled), rv::kMaxCycles, {{3, 1, 1, 1}});
         // mul (instance 1) enters EX in cycle 4 and stays for cycles 4, 5 and 6
         for (unsigned k = 0; k < 3; k++) {
             const auto& busy = t.at(4 + k).busy;
@@ -189,6 +191,26 @@ void addTimelineTests(Suite& suite) {
         expect(json.find("\"version\":2") != std::string::npos);
         expect(json.find("\"latencies\":{\"multiply\":3,\"divide\":1,\"load\":1,\"store\":1}") != std::string::npos);
         expect(json.find("\"busy\":[{\"stage\":\"EX\",\"instance\":1,\"cycle\":2,\"of\":3}]") != std::string::npos);
+    });
+
+    suite.add("stall records without forwarding", [] {
+        auto assembled = rv::assembleWithSourceMap("addi x1,x0,5; add x2,x1,x1");
+        expect(assembled.has_value());
+        const rv::Timeline t = rv::recordPipeline(std::move(*assembled), rv::kMaxCycles, {{}, false});
+        // add (1) waits in ID in cycles 3 and 4 while addi (0) is in EX, then MEM
+        for (const std::size_t cycle : {3u, 4u}) {
+            const auto& stall = t.at(cycle).stall;
+            expect(stall && stall->reason == rv::StallReason::NoForwarding && stall->waiting == 1 && stall->producer == 0
+                   && stall->reg.index() == 1);
+        }
+        // cycle 5: addi writes x1 back in WB while add reads it in ID; add reaches EX in cycle 6
+        expect(!t.at(5).stall && holds(t, 5, Stage::ID, 1) && holds(t, 6, Stage::EX, 1));
+        expect(std::all_of(t.cycles().begin(), t.cycles().end(), [](const rv::CycleRecord& c) { return c.forwards.empty(); }),
+               "nothing is forwarded");
+        const std::string json = rv::toJson(t);
+        expect(json.find("\"forwarding\":false") != std::string::npos);
+        expect(json.find("\"stall\":{\"reason\":\"no-forwarding\",\"waiting\":1,\"producer\":0,\"register\":1}")
+               != std::string::npos);
     });
 
     suite.add("JSON documents", [] {

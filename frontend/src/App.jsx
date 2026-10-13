@@ -6,7 +6,7 @@ import AssemblyEditor from "./features/editor/AssemblyEditor.jsx";
 import EventLog from "./features/event-log/EventLog.jsx";
 import ExamplePicker, { ExampleCaption } from "./features/examples/ExamplePicker.jsx";
 import MachinePanel from "./features/machine/MachinePanel.jsx";
-import TimingSettings from "./features/settings/TimingSettings.jsx";
+import PipelineSettings from "./features/settings/PipelineSettings.jsx";
 import StatsPanel from "./features/stats/StatsPanel.jsx";
 import TimingChart from "./features/timing-chart/TimingChart.jsx";
 import AppLayout from "./layout/AppLayout.jsx";
@@ -29,7 +29,7 @@ export default function App() {
           actions={
             <>
               <ExamplePicker />
-              <TimingSettings />
+              <PipelineSettings />
             </>
           }
           caption={example && <ExampleCaption example={example} />}>

@@ -10,7 +10,7 @@
 
 .register {
   display: grid;
-  grid-template-columns: 3.5ch 4ch 1fr;
+  grid-template-columns: 4.5ch 4ch 1fr;
   gap: var(--space-1);
   padding: 2px var(--space-1);
 }
@@ -27,8 +27,32 @@
   text-align: right;
 }
 
-.zero .value {
+.summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
   color: var(--ink-muted);
+}
+
+/* Written registers: a signal-blue marker before the name. */
+.marker {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  vertical-align: middle;
+  background: var(--signal);
+}
+
+.written .value {
+  font-weight: 600;
+}
+
+/* Never written so far: still the initial zero, so muted. */
+.unwritten,
+.unwritten .abi {
+  color: color-mix(in srgb, var(--ink-muted) 65%, var(--paper));
 }
 
 .changed {

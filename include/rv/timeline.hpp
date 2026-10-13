@@ -65,11 +65,18 @@ struct ForwardRecord {
     uint32_t consumer = 0;  // instance in EX that used it
 };
 
-/*ID held an instruction for a cycle because the load ahead of it had not read memory yet*/
+/*why ID held an instruction for a cycle*/
+enum class StallReason : uint8_t {
+    LoadUse,        // the load in EX has not read memory yet; forwarding supplies the value one cycle later
+    NoForwarding,   // forwarding is off: the producer in EX or MEM has not written the register back yet
+};
+
+/*ID held an instruction for a cycle because a value it needs is not available yet*/
 struct StallRecord {
+    StallReason reason = StallReason::LoadUse;
     uint32_t waiting = 0;   // instance held in ID
-    uint32_t load = 0;      // the load in EX
-    Reg reg;                // register the load writes and the waiting instruction reads
+    uint32_t producer = 0;  // the older instance (in EX or MEM) that writes the register
+    Reg reg;                // register the producer writes and the waiting instruction reads
 };
 
 /*an instruction spending more than one cycle in EX (multiply, divide) or MEM (load, store)*/
@@ -161,7 +168,7 @@ public:
     const CycleRecord& at(std::size_t cycle) const { return cycles_.at(cycle - 1); }
 
     const RunResult& result() const { return result_; }
-    const Latencies& latencies() const { return latencies_; }
+    const PipelineConfig& config() const { return config_; }
     /*the instance that faulted or halted, when the outcome is Faulted or Halted*/
     std::optional<uint32_t> stopInstance() const { return stopInstance_; }
 
@@ -175,7 +182,7 @@ public:
 
 private:
     friend class Pipeline;
-    friend Timeline recordPipeline(AssembledProgram program, std::size_t maxCycles, Latencies latencies);
+    friend Timeline recordPipeline(AssembledProgram program, std::size_t maxCycles, PipelineConfig config);
 
     Program words_;
     std::vector<SourceLocation> sources_;
@@ -184,13 +191,13 @@ private:
     std::vector<uint32_t> occurrences_;     // fetches so far per static instruction
     std::vector<CycleRecord> cycles_;
     RunResult result_;
-    Latencies latencies_;
+    PipelineConfig config_;
     std::optional<uint32_t> stopInstance_;
     RegisterFile finalRegisters_;
     DataMemory finalMemory_;
 };
 
 /*runs the program on the pipeline and records every cycle*/
-Timeline recordPipeline(AssembledProgram program, std::size_t maxCycles = kMaxCycles, Latencies latencies = {});
+Timeline recordPipeline(AssembledProgram program, std::size_t maxCycles = kMaxCycles, PipelineConfig config = {});
 
 }  // namespace rv

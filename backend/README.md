@@ -43,7 +43,8 @@ Environment variables, all optional:
 ```
 
 `maxCycles` is optional. `latencies` is optional too: the cycles a multiply or divide spends in EX and a load or
-store in MEM (`multiply`, `divide`, `load`, `store`, each 1 to 100, default 1). The answer (200) is the timeline document described in
+store in MEM (`multiply`, `divide`, `load`, `store`, each 1 to 100, default 1). `"forwarding": false` runs the
+pipeline without forwarding, so dependent instructions wait for write back. The answer (200) is the timeline document described in
 [docs/timeline-format.md](../docs/timeline-format.md): the program with its source map, every dynamic instruction,
 and per cycle the stage occupancy, forwarding, stalls, flushes, EX datapath values, memory and register writes,
 then the outcome, statistics and final state. A program that halts, faults or reaches the cycle limit is still a 200;

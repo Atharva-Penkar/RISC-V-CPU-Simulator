@@ -27,8 +27,8 @@ struct PipelineRun {
     rv::Pipeline pipeline;
     rv::RunResult result;
 
-    explicit PipelineRun(rv::Program code, std::size_t maxCycles = rv::kMaxCycles, rv::Latencies latencies = {})
-        : program(std::move(code)), pipeline(rv::InstructionMemory(program), latencies) {
+    explicit PipelineRun(rv::Program code, std::size_t maxCycles = rv::kMaxCycles, rv::PipelineConfig config = {})
+        : program(std::move(code)), pipeline(rv::InstructionMemory(program), config) {
         rv::Tracer quiet;
         result = pipeline.run(quiet, maxCycles);
     }
@@ -40,17 +40,17 @@ PipelineRun runPipeline(std::string_view source, std::source_location where = st
     return PipelineRun(assembleOrFail(source, where));
 }
 
-PipelineRun runPipeline(std::string_view source, rv::Latencies latencies,
+PipelineRun runPipeline(std::string_view source, rv::PipelineConfig config,
                         std::source_location where = std::source_location::current()) {
-    return PipelineRun(assembleOrFail(source, where), rv::kMaxCycles, latencies);
+    return PipelineRun(assembleOrFail(source, where), rv::kMaxCycles, config);
 }
 
 /*runs program on both models; the pipeline must end in the same state, with the same outcome, as the ISS*/
-void expectModelsAgree(const rv::Program& program, rv::Latencies latencies,
+void expectModelsAgree(const rv::Program& program, rv::PipelineConfig config,
                        std::source_location where = std::source_location::current()) {
     rv::Tracer quiet;
     rv::Iss iss{rv::InstructionMemory(program)};
-    rv::Pipeline pipeline{rv::InstructionMemory(program), latencies};
+    rv::Pipeline pipeline{rv::InstructionMemory(program), config};
     const rv::RunResult a = iss.run(quiet);
     const rv::RunResult b = pipeline.run(quiet);
     if (a.outcome != b.outcome || a.stats.retired != b.stats.retired)
@@ -68,11 +68,13 @@ void expectModelsAgree(const rv::Program& program, rv::Latencies latencies,
             fail("memory word " + std::to_string(address) + " differs between ISS and pipeline", where);
 }
 
-/*with the classic one-cycle stages, and with slow multiply, divide and memory: timing must never change results*/
+/*with the classic one-cycle stages, with slow multiply, divide and memory, and without forwarding:
+timing must never change results*/
 void expectModelsAgree(const rv::Program& program, std::source_location where = std::source_location::current()) {
     for (const rv::Latencies latencies : {rv::Latencies{}, rv::Latencies{3, 1, 1, 1}, rv::Latencies{1, 1, 2, 3},
                                           rv::Latencies{4, 9, 3, 2}})
-        expectModelsAgree(program, latencies, where);
+        for (const bool forwarding : {true, false})
+            expectModelsAgree(program, rv::PipelineConfig{latencies, forwarding}, where);
 }
 
 void expectModelsAgree(std::string_view source, std::source_location where = std::source_location::current()) {
@@ -148,12 +150,12 @@ void addCpuTests(Suite& suite) {
     suite.add("a multi-cycle multiply or divide holds EX and the stages behind it", [] {
         const char* program = "addi x1,x0,6; addi x2,x0,7; mul x3,x1,x2; add x4,x3,x3";
         const PipelineRun fast = runPipeline(program);
-        const PipelineRun slow = runPipeline(program, {4, 1, 1, 1});
+        const PipelineRun slow = runPipeline(program, {{4, 1, 1, 1}});
         expectEq(slow.x(4), 84u);
         expectEq(slow.result.stats.cycles, fast.result.stats.cycles + 3);
         expectEq(slow.result.stats.executeStalls, std::size_t{3});
         expectEq(slow.result.stats.stalls, std::size_t{0});     // the dependent add is forwarded, not stalled
-        const PipelineRun divide = runPipeline("addi x1,x0,85; addi x2,x0,6; div x3,x1,x2; rem x4,x1,x2", {1, 10, 1, 1});
+        const PipelineRun divide = runPipeline("addi x1,x0,85; addi x2,x0,6; div x3,x1,x2; rem x4,x1,x2", {{1, 10, 1, 1}});
         expectEq(divide.x(3), 14u);
         expectEq(divide.x(4), 1u);
         expectEq(divide.result.stats.executeStalls, std::size_t{18});
@@ -162,11 +164,30 @@ void addCpuTests(Suite& suite) {
     suite.add("a multi-cycle load or store holds MEM and the stages behind it", [] {
         const char* program = "addi x1,x0,5; sw x1,0[x0]; lw x2,0[x0]; add x3,x2,x2";
         const PipelineRun fast = runPipeline(program);
-        const PipelineRun slow = runPipeline(program, {1, 1, 3, 2});
+        const PipelineRun slow = runPipeline(program, {{1, 1, 3, 2}});
         expectEq(slow.x(3), 10u);
         expectEq(slow.result.stats.memoryStalls, std::size_t{3});     // 2 for the load, 1 for the store
         expectEq(slow.result.stats.stalls, std::size_t{1});     // the load-use stall still happens
         expectEq(slow.result.stats.cycles, fast.result.stats.cycles + 3);
+    });
+
+    suite.add("without forwarding, dependent instructions wait in ID until write back", [] {
+        const rv::PipelineConfig off{{}, false};
+        // the producer is in EX, then MEM: two stall cycles; in WB the register file is written first
+        const PipelineRun adjacent = runPipeline("addi x1,x0,5; add x2,x1,x1", off);
+        expectEq(adjacent.x(2), 10u);
+        expectEq(adjacent.result.stats.stalls, std::size_t{2});
+        expectEq(adjacent.result.stats.cycles, runPipeline("addi x1,x0,5; add x2,x1,x1").result.stats.cycles + 2);
+        expectEq(runPipeline("addi x1,x0,5; addi x3,x0,1; add x2,x1,x1", off).result.stats.stalls, std::size_t{1});
+        expectEq(runPipeline("addi x1,x0,5; addi x3,x0,1; addi x4,x0,1; add x2,x1,x1", off).result.stats.stalls,
+                 std::size_t{0});
+        // a load followed by its use: two cycles instead of one
+        expectEq(runPipeline("lw x1,0[x0]; add x2,x1,x1", off).result.stats.stalls, std::size_t{2});
+        // store data and branch operands wait too
+        const PipelineRun store = runPipeline("addi x1,x0,7; sw x1,0[x0]; addi x2,x0,7; beq x1,x2,end; addi x3,x0,1; end:", off);
+        expectEq(store.word(0), 7u);
+        expectEq(store.x(3), 0u);
+        expectEq(rv::PipelineConfig{}.forwarding, true);
     });
 
     suite.add("CPI", [] {

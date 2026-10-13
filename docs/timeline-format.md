@@ -1,8 +1,9 @@
 # Timeline JSON format (version 2)
 
-Version 2 adds the M extension and configurable latencies: the top-level `latencies`, each cycle's `busy` list, the
-`executeStalls` and `memoryStalls` statistics, and `stalled` instructions and `stall` bubbles caused by a busy EX or
-MEM stage as well as by load-use hazards.
+Version 2 adds the M extension, configurable latencies and the forwarding switch: the top-level `latencies` and
+`forwarding`, each cycle's `busy` list, the stall `reason` and `producer`, the `executeStalls` and `memoryStalls`
+statistics, and `stalled` instructions and `stall` bubbles caused by a busy EX or MEM stage as well as by data
+hazards.
 
 `rvsim --json` and the backend's `POST /api/simulate` return the whole pipeline run as one JSON document. The
 simulator runs the program once and records every cycle; a viewer shows cycle N by reading `cycles[N - 1]`, without
@@ -24,6 +25,7 @@ signed or hex in the viewer. Cycles are 1-based, instance ids and instruction id
   "ok": true,
   "model": "pipeline",
   "latencies": { "multiply": 1, "divide": 1, "load": 1, "store": 1 },   // cycles in EX (multiply, divide) or MEM
+  "forwarding": true,                         // false: no forwarding paths, dependent instructions wait in ID
   "program": { "instructions": [ /* Instruction */ ] },
   "instances": [ /* Instance */ ],
   "cycles": [ /* Cycle, cycles[i].cycle == i + 1 */ ],
@@ -117,11 +119,16 @@ A value sent into EX from a later pipeline register instead of the stale value r
 ### Stall
 
 ```json
-{ "waiting": 2, "load": 1, "register": 2 }
+{ "reason": "load-use", "waiting": 2, "producer": 1, "register": 2 }
 ```
 
-The instance in ID (`waiting`) needs `register`, which the load in EX (`load`) has not read from memory yet. ID and
-IF keep their instructions, the PC is not written, and a `stall` bubble enters EX in the next cycle.
+The instance in ID (`waiting`) needs `register`, which the older instance `producer` has not made available yet. ID
+and IF keep their instructions, the PC is not written, and a `stall` bubble enters EX in the next cycle.
+
+| `reason` | Meaning |
+| --- | --- |
+| `load-use` | `producer` is a load in EX that has not read memory yet. One cycle later MEM/WB forwarding supplies the value. |
+| `no-forwarding` | Forwarding is off (`"forwarding": false`) and `producer`, in EX or MEM, has not written the register back yet. The instruction waits until the producer is in WB, which writes the register file before ID reads it. |
 
 ### Busy
 
