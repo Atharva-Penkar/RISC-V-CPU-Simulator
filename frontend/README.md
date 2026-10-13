@@ -44,6 +44,23 @@ npm test          # unit tests (Node's built-in test runner)
 The backend must be running for the app to work: see [backend/README.md](../backend/README.md) (`npm start` serves
 the API on http://localhost:3001).
 
+## Deploying
+
+The site is published to GitHub Pages at https://atharva-penkar.github.io/RISC-V-CPU-Simulator/ by
+`.github/workflows/pages.yml`, on every push to `main` that changes `frontend/` (or by hand from the Actions tab).
+The workflow runs the tests, builds with the backend URL baked in, and deploys `dist/`.
+
+One-time setup:
+
+1. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
+2. Optional: **Settings → Secrets and variables → Actions → Variables**, add `VITE_API_BASE_URL` to point the site at
+   a different backend. Without it the workflow uses the Cloud Run service in asia-south1.
+3. Optional: lock the backend to the site by setting `CORS_ORIGIN=https://atharva-penkar.github.io` on the Cloud
+   Run service (keep `*` while developing locally against it).
+
+The production build uses the base path `/RISC-V-CPU-Simulator/` (see `vite.config.js`); rename it there if the
+repository is renamed.
+
 ## Structure
 
 ```
