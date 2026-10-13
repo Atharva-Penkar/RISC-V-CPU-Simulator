@@ -47,7 +47,9 @@ the API on http://localhost:3001).
 ```
 src/
   main.jsx, App.jsx    entry point; App wires the layout and features together
-  api.js               talking to the backend: fetch wrapper and the simulate/assemble/examples/health calls
+  api/                 talking to the backend, nothing else
+    client.js          fetch wrapper, request cancellation, error responses
+    endpoints.js       simulate, assemble, listExamples, getExample, health
   timeline/            domain logic in plain JavaScript, no React
     types.js           JSDoc types for the timeline JSON
     parse.js           checks the document format and version
