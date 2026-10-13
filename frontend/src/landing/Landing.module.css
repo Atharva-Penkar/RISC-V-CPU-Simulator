@@ -106,7 +106,9 @@
 }
 
 .secondary {
+  min-width: 156px;     /* the outlined buttons side by side are the same width */
   color: var(--signal);
+  text-align: center;
 }
 
 .secondary:hover {
