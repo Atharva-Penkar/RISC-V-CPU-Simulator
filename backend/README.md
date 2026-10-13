@@ -90,7 +90,7 @@ server on Node.js 22 with the example programs. Cloud Run sets `PORT`; the serve
    ```sh
    gcloud auth login
    gcloud config set project YOUR_PROJECT_ID
-   gcloud config set run/region us-central1
+   gcloud config set run/region asia-south1
    gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
    ```
 3. **Deploy** from the repository root (not from `backend/`). Cloud Build builds the `Dockerfile`, stores the image in
@@ -111,9 +111,9 @@ server on Node.js 22 with the example programs. Cloud Run sets `PORT`; the serve
    - `CORS_ORIGIN` is the website's origin (scheme and host, no path). Use `*` to allow any origin.
 4. **Check it.** The command prints the service URL:
    ```sh
-   curl https://riscv-sim-api-XXXXXXXX.us-central1.run.app/api/health
+   curl https://riscv-sim-api-XXXXXXXX.asia-south1.run.app/api/health
    ```
-5. **Point the frontend at it** with `VITE_API_BASE_URL=https://riscv-sim-api-XXXXXXXX.us-central1.run.app` for
+5. **Point the frontend at it** with `VITE_API_BASE_URL=https://riscv-sim-api-XXXXXXXX.asia-south1.run.app` for
    production builds (see `frontend/.env.example`).
 
 To update the service, run the same `gcloud run deploy` command again. Logs are under *Cloud Run → riscv-sim-api →

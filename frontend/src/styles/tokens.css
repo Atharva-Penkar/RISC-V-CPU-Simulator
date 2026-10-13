@@ -1,0 +1,39 @@
+/* Design tokens. The base palette, type and spacing match the portfolio site
+   (atharva-penkar.github.io/portfolio): paper, ink, rules and one blue signal colour. */
+:root {
+  --paper: #f6f3ee;
+  --paper-raised: #fcfaf8;
+  --ink: #171614;
+  --ink-muted: #5f5b55;
+  --rule: #d6d1c8;
+  --signal: #1d3dd0;
+
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 40px;
+  --space-6: 64px;
+
+  /* Pipeline events. A stall is drawn like the portfolio's pipeline figure: solid signal blue. */
+  --stall: var(--signal);
+  --forward: #2f7d5b;
+  --flush: #b3402e;
+  --fault: #b3402e;
+  --changed: #fff3c4;
+
+  /* One colour per static instruction (instruction id modulo 8); every execution of a line shares it.
+     Dark enough for 3:1 contrast as borders on --paper, and for white text when used as a fill. */
+  --inst-0: #1d3dd0;
+  --inst-1: #2f7d5b;
+  --inst-2: #a3561b;
+  --inst-3: #6b4fa8;
+  --inst-4: #0f7088;
+  --inst-5: #a33e72;
+  --inst-6: #5b6b1f;
+  --inst-7: #7a5130;
+  --inst-none: #5f5b55;
+}
