@@ -122,6 +122,9 @@ export default function Landing() {
               <a className={styles.secondary} href="#guide">
                 Read the guide
               </a>
+              <a className={styles.secondary} href={REPOSITORY_URL}>
+                View on GitHub
+              </a>
             </div>
           </div>
           <PipelineFigure />
@@ -333,10 +336,6 @@ loop:   add  x2, x2, x1
         </section>
       </main>
 
-      <footer className={`mono ${styles.footer}`}>
-        <span>Assembler and simulator in C++20 · web interface in React</span>
-        <a href={REPOSITORY_URL}>Source on GitHub</a>
-      </footer>
     </div>
   );
 }
