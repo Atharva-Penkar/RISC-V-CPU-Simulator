@@ -64,10 +64,25 @@ struct Diagnostic {
 
 using Program = std::vector<uint32_t>;
 
+/*1-based position of an instruction's mnemonic in the assembly source*/
+struct SourceLocation {
+    std::size_t line = 0;
+    std::size_t column = 0;
+};
+
+/*machine code plus a source map: sources[i] is where instruction i (address 4*i) was written*/
+struct AssembledProgram {
+    Program words;
+    std::vector<SourceLocation> sources;
+};
+
 /*assembles the whole source; on failure returns every error found, sorted by position.
 syntax: statements end at ';' or a new line, '#' starts a comment, "label:" may stand alone
 or precede an instruction; mnemonics, registers and labels are case-insensitive*/
 Result<Program, std::vector<Diagnostic>> assemble(std::string_view source);
+
+/*assemble() that also returns the source map*/
+Result<AssembledProgram, std::vector<Diagnostic>> assembleWithSourceMap(std::string_view source);
 
 /*packs the fields of an instruction into its 32-bit encoding*/
 uint32_t encode(const DecodedInst& inst);

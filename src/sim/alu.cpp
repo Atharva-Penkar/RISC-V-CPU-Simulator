@@ -93,11 +93,13 @@ ExecuteResult execute(const DecodedInst& inst, const Control& control, uint32_t 
     const uint32_t a = pcRelative ? pc : rs1;
     const uint32_t b = control.aluSrc ? static_cast<uint32_t>(inst.imm) : rs2;
     const uint32_t aluOut = aluExecute(inst.spec->alu, a, b);
-    if (control.branch)
-        return {aluOut, aluOut != 0 ? std::optional(pc + static_cast<uint32_t>(inst.imm)) : std::nullopt};
+    if (control.branch) {
+        const auto target = aluOut != 0 ? std::optional(pc + static_cast<uint32_t>(inst.imm)) : std::nullopt;
+        return {aluOut, target, a, b, aluOut};
+    }
     if (control.jump)
-        return {pc + 4, aluOut & ~1u};     // link address; target pc+imm (JAL) or (rs1+imm)&~1 (JALR)
-    return {aluOut, std::nullopt};
+        return {pc + 4, aluOut & ~1u, a, b, aluOut};   // link address; target pc+imm (JAL) or (rs1+imm)&~1 (JALR)
+    return {aluOut, std::nullopt, a, b, aluOut};
 }
 
 MemoryResult accessMemory(DataMemory& memory, const DecodedInst& inst, const Control& control, uint32_t pc,

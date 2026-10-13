@@ -7,6 +7,7 @@ int main() {
     test::addAluTests(suite);
     test::addMemoryTests(suite);
     test::addCpuTests(suite);
+    test::addTimelineTests(suite);
 
     int failedCases = 0;
     for (const test::Case& c : suite.cases()) {

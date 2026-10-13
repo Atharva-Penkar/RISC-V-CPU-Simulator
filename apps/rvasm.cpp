@@ -8,13 +8,15 @@
 
 #include "rv/assembler.hpp"
 #include "rv/decoder.hpp"
+#include "rv/json.hpp"
 
 namespace {
 
 constexpr std::string_view kUsage =
-    "usage: rvasm [--listing] [-o output.hex] [input.s]\n"
+    "usage: rvasm [--listing | --json] [-o output] [input.s]\n"
     "  reads standard input when no input file is given\n"
-    "  --listing   print address, encoding and disassembly instead of plain hex\n";
+    "  --listing   print address, encoding and disassembly instead of plain hex\n"
+    "  --json      print the program with its source map, or the errors, as JSON\n";
 
 }  // namespace
 
@@ -22,10 +24,13 @@ int main(int argc, char** argv) {
     std::string inputPath;
     std::string outputPath;
     bool listing = false;
+    bool json = false;
     for (int i = 1; i < argc; i++) {
         const std::string_view arg = argv[i];
         if (arg == "--listing")
             listing = true;
+        else if (arg == "--json")
+            json = true;
         else if (arg == "-o" && i + 1 < argc)
             outputPath = argv[++i];
         else if (arg == "-h" || arg == "--help") {
@@ -50,6 +55,12 @@ int main(int argc, char** argv) {
     }
     std::istream& in = inputPath.empty() ? std::cin : file;
     const std::string source{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+
+    if (json) {
+        const auto assembled = rv::assembleWithSourceMap(source);
+        std::cout << (assembled ? rv::toJson(*assembled) : rv::diagnosticsToJson("rv-program", assembled.error())) << '\n';
+        return assembled ? 0 : 1;
+    }
 
     const auto program = rv::assemble(source);
     if (!program) {

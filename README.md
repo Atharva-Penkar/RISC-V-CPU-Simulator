@@ -4,7 +4,10 @@ An assembler and a **5-stage pipelined RISC-V (RV32I) CPU** simulator written in
 
 - `rvasm` turns RV32I assembly into machine code and reports every error with its line and column.
 - `rvsim` runs a program on the pipeline, or on a single-cycle reference model (ISS), and prints the final
-  registers and data memory.
+  registers and data memory. With `--json` it records every pipeline cycle as structured JSON for visualisation
+  ([format](docs/timeline-format.md)).
+- `backend/` is a Node.js API that accepts programs from a web frontend, runs them on `rvsim` and returns the
+  timeline JSON ([API](backend/README.md)).
 
 ## Pipeline
 
@@ -79,6 +82,8 @@ build/rvasm -o fib.hex tests/programs/fibonacci.s
 build/rvsim tests/programs/fibonacci.s                # final state on the pipeline
 build/rvsim --trace tests/programs/forwarding.s       # pipeline registers, stalls, flushes and forwarding per cycle
 build/rvsim --model iss fib.hex                       # reference model, machine code input
+build/rvsim --json tests/programs/forwarding.s        # every cycle as JSON (pipeline model)
+build/rvasm --json tests/programs/forwarding.s        # instructions with their source map
 ```
 
 Without a file argument, both tools read standard input. `rvsim` exits with status 0 when the program finishes or
@@ -116,6 +121,8 @@ include/rv/   isa.hpp        instruction table, Reg, DecodedInst (shared by ever
               memory.hpp     RegisterFile, InstructionMemory (decoded at load), DataMemory
               cpu.hpp        Control, ALU, faults, HazardUnit, Iss, Pipeline, run statistics
               trace.hpp      Tracer interface, per-cycle text trace, state dump
+              timeline.hpp   structured per-cycle record of a pipeline run (Timeline, recordPipeline)
+              json.hpp       JSON documents for the timeline, programs and assembly errors
 src/asm/      lexer.cpp      source -> statements and tokens
               parser.cpp     operands and labels -> DecodedInst; the two assembler passes
               encoder.cpp    DecodedInst -> 32-bit word
@@ -125,7 +132,11 @@ src/sim/      decoder.cpp    32-bit word -> DecodedInst, disassembly
               iss.cpp        single-cycle reference model
               pipeline.cpp   5-stage pipeline
               hazard.cpp     forwarding selection and load-use detection
+              timeline.cpp   recording a run, replaying state at any cycle
+              json.cpp       JSON serialisation
 apps/         rvasm.cpp, rvsim.cpp   command line tools
+backend/      Node.js API for the web frontend
+docs/         timeline-format.md     the JSON timeline format
 tests/unit/   unit tests (no external dependencies)
 tests/programs/  *.s programs with the expected final state (*.expected), run on both CPU models
 ```

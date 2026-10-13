@@ -38,6 +38,8 @@ add_library(rv
   src/sim/iss.cpp
   src/sim/pipeline.cpp
   src/sim/hazard.cpp
+  src/sim/timeline.cpp
+  src/sim/json.cpp
 )
 target_include_directories(rv PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(rv PRIVATE rv_options)
@@ -57,6 +59,7 @@ if(BUILD_TESTING)
     tests/unit/test_alu.cpp
     tests/unit/test_memory.cpp
     tests/unit/test_cpu.cpp
+    tests/unit/test_timeline.cpp
   )
   target_link_libraries(unit_tests PRIVATE rv rv_options)
   add_test(NAME unit COMMAND unit_tests)
@@ -73,5 +76,6 @@ if(BUILD_TESTING)
           -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_program.cmake)
     endforeach()
     add_test(NAME assemble.${name} COMMAND rvasm ${program})
+    add_test(NAME json.${name} COMMAND rvsim --json ${program})
   endforeach()
 endif()

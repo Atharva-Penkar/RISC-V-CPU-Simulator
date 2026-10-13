@@ -10,14 +10,18 @@
 
 #include "rv/assembler.hpp"
 #include "rv/cpu.hpp"
+#include "rv/json.hpp"
+#include "rv/timeline.hpp"
 
 namespace {
 
 constexpr std::string_view kUsage =
-    "usage: rvsim [--model pipeline|iss] [--trace] [--no-stats] [--max-cycles N] [input.s | input.hex]\n"
+    "usage: rvsim [--model pipeline|iss] [--trace | --json] [--no-stats] [--max-cycles N] [input.s | input.hex]\n"
     "  reads assembly from standard input when no input file is given\n"
     "  .hex input holds one hexadecimal instruction word per line (rvasm output)\n"
     "  --no-stats   print only the final registers and memory\n"
+    "  --json       print the whole pipeline run as one JSON document (docs/timeline-format.md),\n"
+    "               including assembly errors; the exit status is the same as without it\n"
     "  exit status: 0 finished or halted, 1 bad input, 2 cycle limit reached, 3 fault\n";
 
 std::optional<rv::Program> readHex(std::string_view text, std::string_view fileName) {
@@ -64,6 +68,24 @@ void printStats(const rv::RunResult& result, std::ostream& out) {
         << (stats.redirects == 1 ? " taken branch/jump" : " taken branches/jumps") << ")\n";
 }
 
+/*0 finished or halted, 2 cycle limit, 3 fault*/
+int exitStatus(const rv::RunResult& result, std::size_t maxCycles, bool explain) {
+    switch (result.outcome) {
+        case rv::Outcome::Finished:
+        case rv::Outcome::Halted:
+            return 0;
+        case rv::Outcome::CycleLimit:
+            if (explain)
+                std::cerr << "rvsim: stopped after " << maxCycles << " cycles (possible infinite loop)\n";
+            return 2;
+        case rv::Outcome::Faulted:
+            if (explain)
+                std::cerr << "rvsim: " << rv::describe(*result.fault) << '\n';
+            return 3;
+    }
+    return 3;
+}
+
 template <class Model>
 int simulate(const rv::Program& program, bool trace, bool stats, std::size_t maxCycles) {
     Model model{rv::InstructionMemory(program)};
@@ -74,18 +96,7 @@ int simulate(const rv::Program& program, bool trace, bool stats, std::size_t max
     if (stats)
         printStats(result, std::cout);
     std::cout.flush();
-    switch (result.outcome) {
-        case rv::Outcome::Finished:
-        case rv::Outcome::Halted:
-            return 0;
-        case rv::Outcome::CycleLimit:
-            std::cerr << "rvsim: stopped after " << maxCycles << " cycles (possible infinite loop)\n";
-            return 2;
-        case rv::Outcome::Faulted:
-            std::cerr << "rvsim: " << rv::describe(*result.fault) << '\n';
-            return 3;
-    }
-    return 3;
+    return exitStatus(result, maxCycles, true);
 }
 
 }  // namespace
@@ -95,6 +106,7 @@ int main(int argc, char** argv) {
     std::string_view model = "pipeline";
     bool trace = false;
     bool stats = true;
+    bool json = false;
     std::size_t maxCycles = rv::kMaxCycles;
     for (int i = 1; i < argc; i++) {
         const std::string_view arg = argv[i];
@@ -102,6 +114,8 @@ int main(int argc, char** argv) {
             trace = true;
         else if (arg == "--no-stats")
             stats = false;
+        else if (arg == "--json")
+            json = true;
         else if (arg == "--model" && i + 1 < argc)
             model = argv[++i];
         else if (arg == "--max-cycles" && i + 1 < argc) {
@@ -123,7 +137,7 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
-    if (model != "pipeline" && model != "iss") {
+    if ((model != "pipeline" && model != "iss") || (json && (model != "pipeline" || trace))) {
         std::cerr << kUsage;
         return 1;
     }
@@ -140,23 +154,32 @@ int main(int argc, char** argv) {
     const std::string source{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
     const std::string_view fileName = inputPath.empty() ? std::string_view("<stdin>") : std::string_view(inputPath);
 
-    rv::Program program;
+    rv::AssembledProgram assembled;
     if (inputPath.ends_with(".hex")) {
         auto words = readHex(source, fileName);
         if (!words)
             return 1;
-        program = std::move(*words);
+        assembled.words = std::move(*words);
     }
     else {
-        auto assembled = rv::assemble(source);
-        if (!assembled) {
-            for (const rv::Diagnostic& diagnostic : assembled.error())
-                std::cerr << rv::formatDiagnostic(diagnostic, source, fileName);
+        auto result = rv::assembleWithSourceMap(source);
+        if (!result) {
+            if (json)
+                std::cout << rv::diagnosticsToJson("rv-timeline", result.error()) << '\n';
+            else
+                for (const rv::Diagnostic& diagnostic : result.error())
+                    std::cerr << rv::formatDiagnostic(diagnostic, source, fileName);
             return 1;
         }
-        program = std::move(*assembled);
+        assembled = std::move(*result);
     }
 
+    if (json) {
+        const rv::Timeline timeline = rv::recordPipeline(std::move(assembled), maxCycles);
+        std::cout << rv::toJson(timeline) << '\n';
+        return exitStatus(timeline.result(), maxCycles, false);
+    }
+    const rv::Program& program = assembled.words;
     return model == "iss" ? simulate<rv::Iss>(program, trace, stats, maxCycles)
                           : simulate<rv::Pipeline>(program, trace, stats, maxCycles);
 }
