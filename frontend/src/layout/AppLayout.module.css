@@ -1,0 +1,105 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.titleBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--ink);
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.status {
+  min-width: 0;
+}
+
+/* Small screens: one column, regions in reading order. */
+.grid {
+  flex: 1;
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "editor"
+    "datapath"
+    "timing"
+    "events"
+    "machine"
+    "stats";
+}
+
+.grid > * {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.grid > * > * {
+  flex: 1;
+}
+
+.editor { grid-area: editor; min-height: 320px; }
+.datapath { grid-area: datapath; min-height: 260px; }
+.timing { grid-area: timing; min-height: 260px; }
+.events { grid-area: events; min-height: 200px; }
+.machine { grid-area: machine; min-height: 200px; }
+.stats { grid-area: stats; }
+
+/* Medium screens: editor beside the pipeline views. */
+@media (min-width: 900px) {
+  .grid {
+    padding: var(--space-3) var(--space-4);
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-areas:
+      "editor   datapath"
+      "editor   timing"
+      "events   machine"
+      "stats    stats";
+  }
+}
+
+/* Large screens: the layout in the README, filling the window. */
+@media (min-width: 1280px) {
+  .page {
+    height: 100vh;
+  }
+
+  .grid {
+    grid-template-columns: minmax(0, 4fr) minmax(0, 3fr) minmax(0, 3fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "editor   datapath datapath"
+      "editor   timing   timing"
+      "events   machine  stats";
+  }
+
+  .editor,
+  .datapath,
+  .timing,
+  .events,
+  .machine {
+    min-height: 0;
+  }
+}
+
+.controls {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--paper);
+  border-top: 1px solid var(--ink);
+  padding: var(--space-2) var(--space-4);
+}

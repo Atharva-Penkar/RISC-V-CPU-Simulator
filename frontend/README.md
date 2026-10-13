@@ -5,7 +5,8 @@ The browser sends a program to the backend API (`../backend`), which assembles a
 returns a timeline of every cycle ([format](../docs/timeline-format.md)). The page is a pure function of that timeline
 and the current cycle: stepping, scrubbing and playback never re-run the simulator.
 
-> Status: scaffold only. The folders and files below exist as empty placeholders; the application is not written yet.
+> Status: the timeline model, API client, app state, page layout and playback controls are written. The editor,
+> timing chart, registers, memory, event log and statistics panels are placeholders, and the datapath is not drawn yet.
 
 ## Planned layout
 
@@ -37,6 +38,7 @@ npm run dev       # development server
 npm run build     # production build in dist/
 npm run preview   # serve the production build
 npm run lint      # ESLint
+npm test          # unit tests (Node's built-in test runner)
 ```
 
 The backend must be running for the app to work: see [backend/README.md](../backend/README.md) (`npm start` serves

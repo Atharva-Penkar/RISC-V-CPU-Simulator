@@ -1,0 +1,125 @@
+.scrubber {
+  --thumb: 14px;
+  flex: 1 1 320px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+/* The lanes are inset by half a thumb so a mark sits exactly above the thumb at its cycle. */
+.lanes {
+  position: relative;
+  margin: 0 calc(var(--thumb) / 2);
+}
+
+.lane {
+  position: relative;
+  height: 5px;
+  margin-bottom: 1px;
+}
+
+.mark {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  transform: translateX(-50%);
+}
+
+.stall {
+  background: var(--stall);
+}
+
+.forward {
+  background: var(--forward);
+}
+
+.flush {
+  background: var(--flush);
+}
+
+.range {
+  display: block;
+  width: 100%;
+  height: var(--thumb);
+  margin: 2px 0 0;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+}
+
+.range:disabled {
+  cursor: default;
+}
+
+.range::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--ink);
+}
+
+.range::-moz-range-track {
+  height: 2px;
+  background: var(--ink);
+}
+
+.range::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--thumb);
+  height: var(--thumb);
+  margin-top: calc(1px - var(--thumb) / 2);
+  background: var(--signal);
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+}
+
+.range::-moz-range-thumb {
+  width: var(--thumb);
+  height: var(--thumb);
+  background: var(--signal);
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.range:disabled::-webkit-slider-thumb {
+  background: var(--rule);
+}
+
+.range:disabled::-moz-range-thumb {
+  background: var(--rule);
+}
+
+.legend {
+  display: flex;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+}
+
+@media (max-width: 600px) {
+  .legend {
+    display: none;
+  }
+}
