@@ -52,11 +52,10 @@ export default function ExamplePicker() {
         <option value="" disabled>
           {loading ? "loading…" : "examples"}
         </option>
-        <option value={DEMO}>demo: forwarding, a stall and flushes</option>
+        <option value={DEMO}>demo</option>
         {examples.map((example) => (
           <option key={example.id} value={example.id}>
             {example.id}
-            {example.description ? `: ${example.description}` : ""}
           </option>
         ))}
       </select>
