@@ -77,3 +77,48 @@ Every error is `{ "error": { "code", "message", "details"? } }`:
 | 500 | `SIMULATOR_ERROR`, `INTERNAL_ERROR` | Unexpected simulator output. |
 
 Responses are gzip-compressed when the client accepts it; timelines shrink roughly tenfold.
+
+## Deploying to Google Cloud Run
+
+The `Dockerfile` in the repository root builds the image: it compiles `rvsim` and `rvasm` with CMake, then runs this
+server on Node.js 22 with the example programs. Cloud Run sets `PORT`; the server listens on it.
+
+1. **Project and billing.** In the [Google Cloud console](https://console.cloud.google.com/), create a project and
+   link a billing account. Cloud Run needs one even within its free tier. Under *Billing → Budgets & alerts*, add a
+   small budget (for example $1) so you are emailed before anything costs money.
+2. **gcloud CLI.** Install the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install), then:
+   ```sh
+   gcloud auth login
+   gcloud config set project YOUR_PROJECT_ID
+   gcloud config set run/region us-central1
+   gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
+   ```
+3. **Deploy** from the repository root (not from `backend/`). Cloud Build builds the `Dockerfile`, stores the image in
+   Artifact Registry and starts the service; the first run asks to create a repository, answer yes.
+   ```sh
+   gcloud run deploy riscv-sim-api \
+     --source . \
+     --allow-unauthenticated \
+     --min-instances 0 --max-instances 2 \
+     --cpu 1 --memory 512Mi \
+     --concurrency 8 \
+     --timeout 30 \
+     --set-env-vars CORS_ORIGIN=https://atharva-penkar.github.io
+   ```
+   - `--min-instances 0` lets the service scale to zero when idle, which keeps it within the free tier; the first
+     request after a quiet period then waits a few seconds while an instance starts.
+   - `--max-instances 2` caps how much it can scale (and cost) under heavy traffic.
+   - `CORS_ORIGIN` is the website's origin (scheme and host, no path). Use `*` to allow any origin.
+4. **Check it.** The command prints the service URL:
+   ```sh
+   curl https://riscv-sim-api-XXXXXXXX.us-central1.run.app/api/health
+   ```
+5. **Point the frontend at it** with `VITE_API_BASE_URL=https://riscv-sim-api-XXXXXXXX.us-central1.run.app` for
+   production builds (see `frontend/.env.example`).
+
+To update the service, run the same `gcloud run deploy` command again. Logs are under *Cloud Run → riscv-sim-api →
+Logs* in the console, or `gcloud run services logs read riscv-sim-api`.
+
+Each deploy stores a new image in Artifact Registry, whose free storage is small; delete old images now and then, or
+add a cleanup policy to the `cloud-run-source-deploy` repository. Check the current free-tier limits on the
+[Cloud Run pricing page](https://cloud.google.com/run/pricing).

@@ -1,0 +1,11 @@
+# Only the C++ sources, the backend and the example programs go into the image.
+.git
+.github
+build
+build-*
+**/node_modules
+frontend
+docs
+backend/test
+tests/unit
+tests/programs/*.expected
