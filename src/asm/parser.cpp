@@ -243,7 +243,7 @@ Result<DecodedInst, Diagnostic> parseInstruction(const Statement& statement, uin
 namespace {
 
 /*pass 1 assigns label addresses, pass 2 parses and encodes every instruction*/
-Result<Program, std::vector<Diagnostic>> assembleStatements(const std::vector<Statement>& statements) {
+Result<AssembledProgram, std::vector<Diagnostic>> assembleStatements(const std::vector<Statement>& statements) {
     std::vector<Diagnostic> diagnostics;
     LabelTable labels;
     uint32_t index = 0;
@@ -255,16 +255,18 @@ Result<Program, std::vector<Diagnostic>> assembleStatements(const std::vector<St
             index++;
     }
 
-    Program program;
+    AssembledProgram program;
     for (const Statement& statement : statements) {
         if (statement.words.empty())
             continue;
-        auto inst = parseInstruction(statement, static_cast<uint32_t>(program.size()), labels);
+        const Token& mnemonic = statement.words[0];
+        program.sources.push_back({mnemonic.line, mnemonic.column});
+        auto inst = parseInstruction(statement, static_cast<uint32_t>(program.words.size()), labels);
         if (inst)
-            program.push_back(encode(*inst));
+            program.words.push_back(encode(*inst));
         else {
             diagnostics.push_back(inst.error());
-            program.push_back(0);   // keeps instruction indices aligned for later statements
+            program.words.push_back(0);     // keeps instruction indices aligned for later statements
         }
     }
     if (!diagnostics.empty()) {
@@ -280,8 +282,15 @@ Result<Program, std::vector<Diagnostic>> assembleStatements(const std::vector<St
 
 }  // namespace detail
 
-Result<Program, std::vector<Diagnostic>> assemble(std::string_view source) {
+Result<AssembledProgram, std::vector<Diagnostic>> assembleWithSourceMap(std::string_view source) {
     return detail::assembleStatements(detail::lex(source));
+}
+
+Result<Program, std::vector<Diagnostic>> assemble(std::string_view source) {
+    auto assembled = assembleWithSourceMap(source);
+    if (!assembled)
+        return fail(assembled.error());
+    return std::move(assembled->words);
 }
 
 std::string formatDiagnostic(const Diagnostic& diagnostic, std::string_view source, std::string_view fileName) {

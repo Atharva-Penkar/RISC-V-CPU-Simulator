@@ -54,5 +54,6 @@ void addAssemblerTests(Suite& suite);
 void addAluTests(Suite& suite);
 void addMemoryTests(Suite& suite);
 void addCpuTests(Suite& suite);
+void addTimelineTests(Suite& suite);
 
 }  // namespace test

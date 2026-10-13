@@ -13,6 +13,9 @@
 
 namespace rv {
 
+class Timeline;
+enum class BubbleReason : uint8_t;
+
 inline constexpr std::size_t kMaxCycles = 10000;    // guards against programs that never terminate
 
 struct Control {
@@ -36,6 +39,9 @@ uint32_t aluExecute(AluOp op, uint32_t a, uint32_t b);
 struct ExecuteResult {
     uint32_t value = 0;                 // memory address for loads/stores, otherwise the value to write back
     std::optional<uint32_t> target;     // set when a branch is taken or for a jump
+    uint32_t aluA = 0;                  // ALU inputs and output, for the timeline
+    uint32_t aluB = 0;
+    uint32_t aluOut = 0;
 };
 
 /*the execute stage, shared by both CPU models; rs1 and rs2 are the operand values*/
@@ -140,15 +146,22 @@ public:
 
     RunResult run(Tracer& tracer, std::size_t maxCycles = kMaxCycles);
 
+    /*record every cycle into timeline during run(); timeline must outlive the run*/
+    void record(Timeline& timeline) { timeline_ = &timeline; }
+
     const RegisterFile& registers() const { return regs_; }
     const DataMemory& memory() const { return dmem_; }
 
 private:
+    /*every pipeline register also carries the dynamic instance id of its instruction, and, when it
+    holds no instruction, whether it is a bubble (only used by the timeline)*/
     struct IfId {
         bool valid = false;
         uint32_t pc = 0;
         uint32_t ir = 0;
         std::optional<Fault> fault;     // fetch fault, raised if the instruction reaches MEM
+        uint32_t instance = 0;
+        std::optional<BubbleReason> bubble;
     };
 
     struct IdEx {
@@ -159,6 +172,8 @@ private:
         uint32_t rs1 = 0;   // register file values, before forwarding
         uint32_t rs2 = 0;
         std::optional<Fault> fault;
+        uint32_t instance = 0;
+        std::optional<BubbleReason> bubble;
     };
 
     struct ExMem {
@@ -169,6 +184,8 @@ private:
         uint32_t aluOut = 0;    // memory address, or the value to write back
         uint32_t storeData = 0;
         std::optional<Fault> fault;
+        uint32_t instance = 0;
+        std::optional<BubbleReason> bubble;
     };
 
     struct MemWb {
@@ -177,6 +194,8 @@ private:
         DecodedInst inst;
         Control cw;
         uint32_t result = 0;    // value to write back
+        uint32_t instance = 0;
+        std::optional<BubbleReason> bubble;
     };
 
     /*what happened in one cycle, for the trace*/
@@ -193,6 +212,8 @@ private:
     PendingWrite pendingWrite(const ExMem& latch) const;
     PendingWrite pendingWrite(const MemWb& latch) const;
     void trace(Tracer& tracer, const CycleEvents& events) const;
+    /*a new dynamic instance for a fetch at pc*/
+    uint32_t newInstance(uint32_t pc);
 
     InstructionMemory imem_;
     RegisterFile regs_;
@@ -204,6 +225,9 @@ private:
     ExMem exmem_;
     MemWb memwb_;
     RunResult result_;
+    uint32_t nextInstance_ = 0;
+    std::optional<uint32_t> pendingFetch_;  // instance shown in IF while a stall holds the PC
+    Timeline* timeline_ = nullptr;
 };
 
 }  // namespace rv
