@@ -1,4 +1,7 @@
 #include "rv/cpu.hpp"
+
+#include <algorithm>
+
 #include "rv/decoder.hpp"
 #include "rv/timeline.hpp"
 
@@ -19,8 +22,28 @@ const char* toString(ForwardSource source) {
 
 }  // namespace
 
-Pipeline::Pipeline(InstructionMemory program) : imem_(program) {
+Pipeline::Pipeline(InstructionMemory program, Latencies latencies) : imem_(program), latencies_(latencies) {
     fetching_ = imem_.contains(0);
+}
+
+unsigned Pipeline::executeLatency(const IdEx& latch) const {
+    if (!latch.valid || latch.fault)
+        return 1;
+    if (isMultiply(latch.inst.spec->alu))
+        return latencies_.multiply;
+    if (isDivide(latch.inst.spec->alu))
+        return latencies_.divide;
+    return 1;
+}
+
+unsigned Pipeline::memoryLatency(const ExMem& latch) const {
+    if (!latch.valid || latch.fault)
+        return 1;
+    if (latch.cw.memRead)
+        return latencies_.load;
+    if (latch.cw.memWrite)
+        return latencies_.store;
+    return 1;
 }
 
 bool Pipeline::empty() const {
@@ -134,6 +157,7 @@ std::optional<Outcome> Pipeline::cycle(CycleEvents& events) {
         exmem_ = {};
         memwb_ = {};
         pendingFetch_.reset();
+        executeCycles_ = memoryCycles_ = 0;
         return outcome;
     };
 
@@ -153,9 +177,15 @@ std::optional<Outcome> Pipeline::cycle(CycleEvents& events) {
         settle(memwb_.instance, Fate::Retired);
     }
 
-    /*MEM: faults and halts take effect here, after every older instruction has completed*/
+    /*MEM: faults and halts take effect here, after every older instruction has completed. A load or store
+    slower than one cycle keeps MEM busy: it accesses memory in its last cycle, and until then MEM holds
+    it and sends a bubble to WB*/
     MemWb nextMemWb;
-    if (exmem_.valid) {
+    const unsigned memLatency = memoryLatency(exmem_);
+    const bool memBusy = exmem_.valid && memoryCycles_ + 1 < memLatency;
+    if (record && exmem_.valid && memLatency > 1)
+        record->busy.push_back({Stage::MEM, exmem_.instance, memoryCycles_ + 1, memLatency});
+    if (exmem_.valid && !memBusy) {
         if (exmem_.fault) {
             result_.fault = exmem_.fault;
             return stop(Outcome::Faulted, exmem_.instance, Fate::Faulted);
@@ -180,13 +210,28 @@ std::optional<Outcome> Pipeline::cycle(CycleEvents& events) {
         nextMemWb = {true, exmem_.pc, exmem_.inst, exmem_.cw, exmem_.cw.memToReg ? mem.loaded : exmem_.aluOut,
                      exmem_.instance, std::nullopt};
     }
+    else if (memBusy)
+        nextMemWb.bubble = BubbleReason::Stall;
     else
         nextMemWb.bubble = exmem_.bubble;
 
-    /*EX: operands are forwarded from the two older instructions that have not written back yet*/
+    /*EX: operands are forwarded from the two older instructions that have not written back yet. A multiply
+    or divide slower than one cycle keeps EX busy and produces its result in its last cycle; while MEM is
+    busy, EX cannot hand anything on and waits too*/
     ExMem nextExMem;
     std::optional<uint32_t> redirect;
-    if (idex_.valid) {
+    const unsigned exLatency = executeLatency(idex_);
+    const bool exComputing = idex_.valid && executeCycles_ + 1 < exLatency;
+    const bool exAdvances = idex_.valid && !exComputing && !memBusy;
+    if (record && idex_.valid && exLatency > 1 && executeCycles_ < exLatency)
+        record->busy.insert(record->busy.begin(), {Stage::EX, idex_.instance, executeCycles_ + 1, exLatency});
+    if (record && idex_.valid && !exComputing && memBusy)
+        record->stages[index(Stage::EX)].stalled = true;
+    if (memBusy)
+        nextExMem = exmem_;
+    else if (exComputing)
+        nextExMem.bubble = BubbleReason::Stall;
+    else if (idex_.valid) {
         if (idex_.fault)
             nextExMem = {true, idex_.pc, {}, {}, 0, 0, idex_.fault, idex_.instance, std::nullopt};
         else {
@@ -205,8 +250,10 @@ std::optional<Outcome> Pipeline::cycle(CycleEvents& events) {
                 }
                 return value;
             };
-            const uint32_t rs1 = operand(Operand::Rs1, idex_.inst.rs1, idex_.rs1, events.rs1);
-            const uint32_t rs2 = operand(Operand::Rs2, idex_.inst.rs2, idex_.rs2, events.rs2);
+            /*the register file is read again here: after EX or MEM was busy, an older instruction may have
+            written back since ID read it, and neither forwarding path holds that value any more*/
+            const uint32_t rs1 = operand(Operand::Rs1, idex_.inst.rs1, regs_.read(idex_.inst.rs1), events.rs1);
+            const uint32_t rs2 = operand(Operand::Rs2, idex_.inst.rs2, regs_.read(idex_.inst.rs2), events.rs2);
             const ExecuteResult ex = execute(idex_.inst, idex_.cw, idex_.pc, rs1, rs2);
             nextExMem = {true, idex_.pc, idex_.inst, idex_.cw, ex.value, rs2, std::nullopt, idex_.instance, std::nullopt};
             redirect = ex.target;
@@ -228,10 +275,18 @@ std::optional<Outcome> Pipeline::cycle(CycleEvents& events) {
     else
         nextExMem.bubble = idex_.bubble;
 
-    /*ID: decode and read registers; a load in EX whose result is needed here costs one stall cycle*/
+    /*ID: decode and read registers; a load in EX whose result is needed here costs one stall cycle.
+    While EX keeps its instruction (busy, or waiting for a busy MEM), ID and IF hold theirs*/
     IdEx nextIdEx;
     bool stall = false;
-    if (ifid_.valid) {
+    const bool frontHeld = memBusy || exComputing;
+    if (frontHeld) {
+        stall = true;
+        nextIdEx = idex_;
+        if (record && ifid_.valid)
+            record->stages[index(Stage::ID)].stalled = true;
+    }
+    else if (ifid_.valid) {
         if (ifid_.fault)
             nextIdEx = {true, ifid_.pc, {}, {}, 0, 0, ifid_.fault, ifid_.instance, std::nullopt};
         else if (const std::optional<DecodedInst>& inst = imem_.decoded(ifid_.pc)) {
@@ -314,7 +369,15 @@ std::optional<Outcome> Pipeline::cycle(CycleEvents& events) {
         fetching_ = true;
         nextPcSource = idex_.cw.branch ? NextPcSource::BranchTarget : NextPcSource::JumpTarget;
     }
-    if (stall) {
+    if (memBusy) {
+        stats.memoryStalls++;
+        events.memoryBusy = true;
+    }
+    else if (exComputing) {
+        stats.executeStalls++;
+        events.executeBusy = true;
+    }
+    else if (stall) {
         stats.stalls++;
         events.stalled = true;
     }
@@ -323,6 +386,8 @@ std::optional<Outcome> Pipeline::cycle(CycleEvents& events) {
         record->nextPc = pc_;
     }
 
+    memoryCycles_ = memBusy ? memoryCycles_ + 1 : 0;
+    executeCycles_ = idex_.valid && !exAdvances ? std::min(executeCycles_ + 1, exLatency) : 0;
     ifid_ = nextIfId;
     idex_ = nextIdEx;
     exmem_ = nextExMem;
@@ -351,6 +416,10 @@ void Pipeline::trace(Tracer& tracer, const CycleEvents& events) const {
     auto add = [&](const std::string& text) { hazards += (hazards.empty() ? "" : "; ") + text; };
     if (events.stalled)
         add("load-use stall");
+    if (events.executeBusy)
+        add("EX busy (multiply/divide)");
+    if (events.memoryBusy)
+        add("MEM busy (memory access)");
     if (events.flushed != 0)
         add("flushed " + std::to_string(events.flushed));
     if (events.rs1 != ForwardSource::RegisterFile)

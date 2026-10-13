@@ -66,6 +66,15 @@
   font-weight: 600;
 }
 
+.busy {
+  background: color-mix(in srgb, var(--signal) 10%, var(--paper-raised));
+}
+
+.busy .note {
+  color: var(--signal);
+  font-weight: 600;
+}
+
 .flushed {
   border-style: dashed;
   border-color: var(--flush);

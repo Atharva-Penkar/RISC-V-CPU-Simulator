@@ -1,4 +1,4 @@
-// JSDoc types for the simulator's JSON documents (docs/timeline-format.md, version 1).
+// JSDoc types for the simulator's JSON documents (docs/timeline-format.md, version 2).
 // Values are unsigned 32-bit numbers; cycles are 1-based; instruction and instance ids are 0-based.
 
 /** @typedef {"IF" | "ID" | "EX" | "MEM" | "WB"} StageName */
@@ -80,6 +80,24 @@
  */
 
 /**
+ * An instruction spending more than one cycle in EX (multiply, divide) or MEM (load, store).
+ * @typedef {object} Busy
+ * @property {"EX" | "MEM"} stage
+ * @property {number} instance
+ * @property {number} cycle     which of its cycles in the stage this is, 1-based
+ * @property {number} of        cycles it needs in the stage
+ */
+
+/**
+ * Cycles the slow operations take: multiply and divide in EX, load and store in MEM.
+ * @typedef {object} Latencies
+ * @property {number} multiply
+ * @property {number} divide
+ * @property {number} load
+ * @property {number} store
+ */
+
+/**
  * @typedef {object} Flush
  * @property {number} by          the branch or jump instance
  * @property {number[]} squashed
@@ -127,6 +145,7 @@
  * @property {Record<StageName, Slot>} stages
  * @property {Forward[]} forwarding
  * @property {Stall | null} stall
+ * @property {Busy[]} busy
  * @property {Flush | null} flush
  * @property {Execute | null} execute
  * @property {MemoryAccess | null} memory
@@ -153,7 +172,9 @@
  * @property {number} cycles
  * @property {number} instructions
  * @property {number} cpi
- * @property {number} stalls
+ * @property {number} stalls         load-use stall cycles
+ * @property {number} executeStalls  cycles a busy EX (multiply, divide) held the pipeline
+ * @property {number} memoryStalls   cycles a busy MEM (load, store) held the pipeline
  * @property {number} flushes
  * @property {number} redirects
  */
@@ -165,6 +186,7 @@
  * @property {1} version
  * @property {true} ok
  * @property {"pipeline"} model
+ * @property {Latencies} latencies
  * @property {{ instructions: Instruction[] }} program
  * @property {Instance[]} instances  instances[i].id === i
  * @property {Cycle[]} cycles        cycles[i].cycle === i + 1

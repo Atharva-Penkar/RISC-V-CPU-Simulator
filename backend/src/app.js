@@ -22,13 +22,40 @@ function readMaxCycles(body, config) {
   return value;
 }
 
+/** The rvsim option for each latency, and the largest value it accepts. */
+const LATENCY_FLAGS = { multiply: "--mul-latency", divide: "--div-latency", load: "--load-latency", store: "--store-latency" };
+export const MAX_LATENCY = 100;
+
+/**
+ * Optional cycles for multiply, divide, load and store: { multiply?, divide?, load?, store? }, each 1 to 100.
+ * Returns the rvsim arguments for the ones given.
+ */
+function readLatencies(body) {
+  const latencies = body.latencies ?? {};
+  if (typeof latencies !== "object" || latencies === null || Array.isArray(latencies)) {
+    throw new ApiError(400, "INVALID_LATENCIES", '"latencies" must be an object.');
+  }
+  const args = [];
+  for (const [name, value] of Object.entries(latencies)) {
+    const flag = LATENCY_FLAGS[name];
+    if (!flag) {
+      throw new ApiError(400, "INVALID_LATENCIES", `Unknown latency "${name}". Use multiply, divide, load or store.`);
+    }
+    if (!Number.isInteger(value) || value < 1 || value > MAX_LATENCY) {
+      throw new ApiError(400, "INVALID_LATENCIES", `Latency "${name}" must be an integer from 1 to ${MAX_LATENCY}.`);
+    }
+    args.push(flag, String(value));
+  }
+  return args;
+}
+
 /**
  * The HTTP API:
  *   GET  /api/health          simulator availability and limits
  *   GET  /api/examples        example programs
  *   GET  /api/examples/:id    one example program
  *   POST /api/assemble        { source } -> "rv-program" document
- *   POST /api/simulate        { source, maxCycles? } -> "rv-timeline" document
+ *   POST /api/simulate        { source, maxCycles?, latencies? } -> "rv-timeline" document
  * Errors are { error: { code, message, details? } }; assembly errors are 422 with the diagnostics as details.
  */
 export function createApp({ config, simulator, examples }) {
@@ -55,6 +82,7 @@ export function createApp({ config, simulator, examples }) {
         maxSourceBytes: config.maxSourceBytes,
         defaultMaxCycles: config.defaultMaxCycles,
         maxCyclesLimit: config.maxCyclesLimit,
+        maxLatency: MAX_LATENCY,
       },
     });
   });
@@ -77,7 +105,8 @@ export function createApp({ config, simulator, examples }) {
   app.post("/api/simulate", async (req, res) => {
     const source = readSource(req.body, config);
     const maxCycles = readMaxCycles(req.body, config);
-    res.json(await simulator.simulate(source, maxCycles));
+    const latencyArgs = readLatencies(req.body);
+    res.json(await simulator.simulate(source, maxCycles, latencyArgs));
   });
 
   app.use((req, res) => {

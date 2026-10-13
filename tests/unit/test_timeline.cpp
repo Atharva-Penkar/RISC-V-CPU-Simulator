@@ -171,6 +171,26 @@ void addTimelineTests(Suite& suite) {
         expect(store != t.cycles().end() && store->memory->value == 0xFFFFFFFEu && store->memory->previous == 0);
     });
 
+    suite.add("busy records and held stages for multi-cycle operations", [] {
+        auto assembled = rv::assembleWithSourceMap("addi x1,x0,6; mul x2,x1,x1; addi x3,x0,1; addi x4,x0,2");
+        expect(assembled.has_value());
+        const rv::Timeline t = rv::recordPipeline(std::move(*assembled), rv::kMaxCycles, {3, 1, 1, 1});
+        // mul (instance 1) enters EX in cycle 4 and stays for cycles 4, 5 and 6
+        for (unsigned k = 0; k < 3; k++) {
+            const auto& busy = t.at(4 + k).busy;
+            expect(busy.size() == 1 && busy[0].stage == Stage::EX && busy[0].instance == 1 && busy[0].cycle == k + 1
+                   && busy[0].latency == 3);
+        }
+        expect(slot(t, 4, Stage::ID).stalled && slot(t, 5, Stage::ID).stalled && !slot(t, 6, Stage::ID).stalled);
+        expect(isBubble(t, 5, Stage::MEM, rv::BubbleReason::Stall), "a bubble leaves EX while it is busy");
+        expect(holds(t, 7, Stage::MEM, 1));
+        expectEq(t.result().stats.executeStalls, std::size_t{2});
+        const std::string json = rv::toJson(t);
+        expect(json.find("\"version\":2") != std::string::npos);
+        expect(json.find("\"latencies\":{\"multiply\":3,\"divide\":1,\"load\":1,\"store\":1}") != std::string::npos);
+        expect(json.find("\"busy\":[{\"stage\":\"EX\",\"instance\":1,\"cycle\":2,\"of\":3}]") != std::string::npos);
+    });
+
     suite.add("JSON documents", [] {
         const std::string timeline = rv::toJson(recordOrFail("addi x1,x0,1"));
         expect(timeline.front() == '{' && timeline.back() == '}');

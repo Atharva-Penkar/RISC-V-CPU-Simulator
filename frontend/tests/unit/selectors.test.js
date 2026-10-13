@@ -17,7 +17,7 @@ describe("stageOccupancy", () => {
     const timeline = loadTimeline("arithmetic");
     const first = stageOccupancy(timeline, 1);
     assert.deepEqual(first.map((s) => s.stage), STAGES);
-    assert.deepEqual(first[0].content, { kind: "instance", instance: 0, stalled: false });
+    assert.deepEqual(first[0].content, { kind: "instance", instance: 0, stalled: false, busy: null });
     assert.ok(first.slice(1).every((s) => s.content.kind === "empty"));
     const fifth = stageOccupancy(timeline, 5);
     assert.deepEqual(
@@ -103,6 +103,32 @@ describe("timingRows", () => {
   test("is computed once per timeline", () => {
     const timeline = loadTimeline("forwarding");
     assert.equal(timingRows(timeline), timingRows(timeline));
+  });
+});
+
+describe("multi-cycle operations", () => {
+  test("a slow multiply stays in EX and holds the stages behind it", () => {
+    const timeline = loadTimeline("latency-slow");
+    assert.deepEqual(timeline.latencies, { multiply: 3, divide: 4, load: 2, store: 2 });
+    const mul = timingRows(timeline)[1];
+    assert.deepEqual(
+      mul.cells.filter((c) => c.stage === "EX").map((c) => c.busy),
+      [{ cycle: 1, of: 3 }, { cycle: 2, of: 3 }, { cycle: 3, of: 3 }],
+    );
+    const during = stageOccupancy(timeline, 4);
+    const ex = during.find((s) => s.stage === "EX")?.content;
+    assert.deepEqual(ex, { kind: "instance", instance: 1, stalled: false, busy: { cycle: 1, of: 3 } });
+    const id = during.find((s) => s.stage === "ID")?.content;
+    assert.ok(id?.kind === "instance" && id.stalled);
+    assert.deepEqual(stageOccupancy(timeline, 5).find((s) => s.stage === "MEM")?.content, { kind: "bubble", reason: "stall" });
+  });
+
+  test("busy cycles are events and marked on the scrubber", () => {
+    const timeline = loadTimeline("latency-slow");
+    assert.ok(cycleEvents(timeline, 4).some((e) => e.kind === "busy"));
+    const holding = timeline.cycles.filter((c) => c.stall || c.busy.some((b) => b.cycle < b.of)).length;
+    assert.equal(scrubberMarks(timeline).filter((m) => m.stall).length, holding);
+    assert.equal(holding, timeline.stats.stalls + timeline.stats.executeStalls + timeline.stats.memoryStalls);
   });
 });
 

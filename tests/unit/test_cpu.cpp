@@ -27,8 +27,8 @@ struct PipelineRun {
     rv::Pipeline pipeline;
     rv::RunResult result;
 
-    explicit PipelineRun(rv::Program code, std::size_t maxCycles = rv::kMaxCycles)
-        : program(std::move(code)), pipeline(rv::InstructionMemory(program)) {
+    explicit PipelineRun(rv::Program code, std::size_t maxCycles = rv::kMaxCycles, rv::Latencies latencies = {})
+        : program(std::move(code)), pipeline(rv::InstructionMemory(program), latencies) {
         rv::Tracer quiet;
         result = pipeline.run(quiet, maxCycles);
     }
@@ -40,11 +40,17 @@ PipelineRun runPipeline(std::string_view source, std::source_location where = st
     return PipelineRun(assembleOrFail(source, where));
 }
 
+PipelineRun runPipeline(std::string_view source, rv::Latencies latencies,
+                        std::source_location where = std::source_location::current()) {
+    return PipelineRun(assembleOrFail(source, where), rv::kMaxCycles, latencies);
+}
+
 /*runs program on both models; the pipeline must end in the same state, with the same outcome, as the ISS*/
-void expectModelsAgree(const rv::Program& program, std::source_location where = std::source_location::current()) {
+void expectModelsAgree(const rv::Program& program, rv::Latencies latencies,
+                       std::source_location where = std::source_location::current()) {
     rv::Tracer quiet;
     rv::Iss iss{rv::InstructionMemory(program)};
-    rv::Pipeline pipeline{rv::InstructionMemory(program)};
+    rv::Pipeline pipeline{rv::InstructionMemory(program), latencies};
     const rv::RunResult a = iss.run(quiet);
     const rv::RunResult b = pipeline.run(quiet);
     if (a.outcome != b.outcome || a.stats.retired != b.stats.retired)
@@ -60,6 +66,13 @@ void expectModelsAgree(const rv::Program& program, std::source_location where = 
     for (uint32_t address = 0; address < iss.memory().size(); address += 4)
         if (iss.memory().read(address, 4) != pipeline.memory().read(address, 4))
             fail("memory word " + std::to_string(address) + " differs between ISS and pipeline", where);
+}
+
+/*with the classic one-cycle stages, and with slow multiply, divide and memory: timing must never change results*/
+void expectModelsAgree(const rv::Program& program, std::source_location where = std::source_location::current()) {
+    for (const rv::Latencies latencies : {rv::Latencies{}, rv::Latencies{3, 1, 1, 1}, rv::Latencies{1, 1, 2, 3},
+                                          rv::Latencies{4, 9, 3, 2}})
+        expectModelsAgree(program, latencies, where);
 }
 
 void expectModelsAgree(std::string_view source, std::source_location where = std::source_location::current()) {
@@ -130,6 +143,30 @@ void addCpuTests(Suite& suite) {
         const PipelineRun notTaken = runPipeline("bne x0,x0,skip; addi x1,x0,1; skip: addi x2,x0,2");
         expectEq(notTaken.result.stats.flushes, std::size_t{0});
         expectEq(notTaken.x(1), 1u);
+    });
+
+    suite.add("a multi-cycle multiply or divide holds EX and the stages behind it", [] {
+        const char* program = "addi x1,x0,6; addi x2,x0,7; mul x3,x1,x2; add x4,x3,x3";
+        const PipelineRun fast = runPipeline(program);
+        const PipelineRun slow = runPipeline(program, {4, 1, 1, 1});
+        expectEq(slow.x(4), 84u);
+        expectEq(slow.result.stats.cycles, fast.result.stats.cycles + 3);
+        expectEq(slow.result.stats.executeStalls, std::size_t{3});
+        expectEq(slow.result.stats.stalls, std::size_t{0});     // the dependent add is forwarded, not stalled
+        const PipelineRun divide = runPipeline("addi x1,x0,85; addi x2,x0,6; div x3,x1,x2; rem x4,x1,x2", {1, 10, 1, 1});
+        expectEq(divide.x(3), 14u);
+        expectEq(divide.x(4), 1u);
+        expectEq(divide.result.stats.executeStalls, std::size_t{18});
+    });
+
+    suite.add("a multi-cycle load or store holds MEM and the stages behind it", [] {
+        const char* program = "addi x1,x0,5; sw x1,0[x0]; lw x2,0[x0]; add x3,x2,x2";
+        const PipelineRun fast = runPipeline(program);
+        const PipelineRun slow = runPipeline(program, {1, 1, 3, 2});
+        expectEq(slow.x(3), 10u);
+        expectEq(slow.result.stats.memoryStalls, std::size_t{3});     // 2 for the load, 1 for the store
+        expectEq(slow.result.stats.stalls, std::size_t{1});     // the load-use stall still happens
+        expectEq(slow.result.stats.cycles, fast.result.stats.cycles + 3);
     });
 
     suite.add("CPI", [] {
@@ -229,6 +266,10 @@ void addCpuTests(Suite& suite) {
         expectModelsAgree("lw x1,0[x0]; beq x1,x0,a; addi x2,x0,1; a: lw x3,4[x0]; jalr x4,x3,24; addi x5,x0,1; ebreak");
         expectModelsAgree("addi x1,x0,1; sw x1,0[x0]; ecall; addi x2,x0,2");
         expectModelsAgree("addi x1,x0,252; lw x2,0[x1]; lh x3,2[x1]; lw x4,4[x1]");
+        expectModelsAgree("addi x1,x0,-7; addi x2,x0,2; mul x3,x1,x2; mulh x4,x1,x2; mulhu x5,x1,x2; mulhsu x6,x1,x2");
+        expectModelsAgree("addi x1,x0,-7; addi x2,x0,2; div x3,x1,x2; rem x4,x1,x2; divu x5,x1,x0; remu x6,x1,x0; sw x3,0[x0]");
+        expectModelsAgree("addi x1,x0,3; loop: mul x2,x1,x1; sw x2,0[x0]; lw x3,0[x0]; div x4,x3,x1; addi x1,x1,-1; bne x1,x0,loop");
+        expectModelsAgree("addi x1,x0,6; mul x2,x1,x1; lw x3,256[x0]; addi x4,x0,1");
         expectModelsAgree(rv::Program{0x00100093u, 0xFFFFFFFFu});
         expectModelsAgree("jal x0,40");
     });

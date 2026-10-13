@@ -11,7 +11,7 @@
 
 namespace rv {
 
-inline constexpr int kJsonFormatVersion = 1;
+inline constexpr int kJsonFormatVersion = 2;
 
 /*{"format":"rv-timeline","ok":true,...}: the program, every instance, every cycle, outcome, stats, final state*/
 std::string toJson(const Timeline& timeline);

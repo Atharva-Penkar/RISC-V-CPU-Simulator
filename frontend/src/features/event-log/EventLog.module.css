@@ -58,6 +58,10 @@
   color: #ffffff;
 }
 
+.busy {
+  color: var(--signal);
+}
+
 .flush {
   color: var(--flush);
 }

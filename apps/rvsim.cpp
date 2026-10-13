@@ -1,4 +1,4 @@
-// rvsim: runs an RV32I program on the pipeline (default) or the reference ISS and prints the final state.
+// rvsim: runs an RV32IM program on the pipeline (default) or the reference ISS and prints the final state.
 #include <charconv>
 #include <fstream>
 #include <iomanip>
@@ -16,10 +16,14 @@
 namespace {
 
 constexpr std::string_view kUsage =
-    "usage: rvsim [--model pipeline|iss] [--trace | --json] [--no-stats] [--max-cycles N] [input.s | input.hex]\n"
+    "usage: rvsim [--model pipeline|iss] [--trace | --json] [--no-stats] [--max-cycles N]\n"
+    "             [--mul-latency N] [--div-latency N] [--load-latency N] [--store-latency N] [input.s | input.hex]\n"
     "  reads assembly from standard input when no input file is given\n"
     "  .hex input holds one hexadecimal instruction word per line (rvasm output)\n"
     "  --no-stats   print only the final registers and memory\n"
+    "  --mul-latency, --div-latency, --load-latency, --store-latency N\n"
+    "               cycles a multiply or divide spends in EX, or a load or store in MEM (1 to 100,\n"
+    "               default 1); the busy stage holds the stages behind it. Pipeline model only\n"
     "  --json       print the whole pipeline run as one JSON document (docs/timeline-format.md),\n"
     "               including assembly errors; the exit status is the same as without it\n"
     "  exit status: 0 finished or halted, 1 bad input, 2 cycle limit reached, 3 fault\n";
@@ -63,7 +67,12 @@ void printStats(const rv::RunResult& result, std::ostream& out) {
     out << "\n  cycles        " << stats.cycles
         << "\n  instructions  " << stats.retired
         << "\n  CPI           " << std::fixed << std::setprecision(2) << stats.cpi()
-        << "\n  stalls        " << plural(stats.stalls, "cycle") << " (load-use)"
+        << "\n  stalls        " << plural(stats.stalls, "cycle") << " (load-use)";
+    if (stats.executeStalls != 0)
+        out << ", " << plural(stats.executeStalls, "cycle") << " (EX busy)";
+    if (stats.memoryStalls != 0)
+        out << ", " << plural(stats.memoryStalls, "cycle") << " (MEM busy)";
+    out
         << "\n  flushes       " << plural(stats.flushes, "instruction") << " (" << stats.redirects
         << (stats.redirects == 1 ? " taken branch/jump" : " taken branches/jumps") << ")\n";
 }
@@ -87,8 +96,7 @@ int exitStatus(const rv::RunResult& result, std::size_t maxCycles, bool explain)
 }
 
 template <class Model>
-int simulate(const rv::Program& program, bool trace, bool stats, std::size_t maxCycles) {
-    Model model{rv::InstructionMemory(program)};
+int simulate(Model model, bool trace, bool stats, std::size_t maxCycles) {
     rv::Tracer quiet;
     rv::TextTracer text(std::cout);
     const rv::RunResult result = model.run(trace ? static_cast<rv::Tracer&>(text) : quiet, maxCycles);
@@ -108,9 +116,27 @@ int main(int argc, char** argv) {
     bool stats = true;
     bool json = false;
     std::size_t maxCycles = rv::kMaxCycles;
+    rv::Latencies latencies;
+    bool latencyGiven = false;
+    auto parseCount = [](std::string_view value, auto& out) {
+        auto [end, ec] = std::from_chars(value.data(), value.data() + value.size(), out);
+        return ec == std::errc{} && end == value.data() + value.size();
+    };
     for (int i = 1; i < argc; i++) {
         const std::string_view arg = argv[i];
-        if (arg == "--trace")
+        unsigned* latency = arg == "--mul-latency"     ? &latencies.multiply
+                          : arg == "--div-latency"     ? &latencies.divide
+                          : arg == "--load-latency"    ? &latencies.load
+                          : arg == "--store-latency"   ? &latencies.store
+                                                       : nullptr;
+        if (latency && i + 1 < argc) {
+            latencyGiven = true;
+            if (!parseCount(argv[++i], *latency)) {
+                std::cerr << kUsage;
+                return 1;
+            }
+        }
+        else if (arg == "--trace")
             trace = true;
         else if (arg == "--no-stats")
             stats = false;
@@ -119,9 +145,7 @@ int main(int argc, char** argv) {
         else if (arg == "--model" && i + 1 < argc)
             model = argv[++i];
         else if (arg == "--max-cycles" && i + 1 < argc) {
-            const std::string_view value = argv[++i];
-            auto [end, ec] = std::from_chars(value.data(), value.data() + value.size(), maxCycles);
-            if (ec != std::errc{} || end != value.data() + value.size()) {
+            if (!parseCount(argv[++i], maxCycles)) {
                 std::cerr << kUsage;
                 return 1;
             }
@@ -137,7 +161,8 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
-    if ((model != "pipeline" && model != "iss") || (json && (model != "pipeline" || trace))) {
+    if ((model != "pipeline" && model != "iss") || (json && (model != "pipeline" || trace)) || !latencies.valid()
+        || (latencyGiven && model != "pipeline")) {
         std::cerr << kUsage;
         return 1;
     }
@@ -175,11 +200,11 @@ int main(int argc, char** argv) {
     }
 
     if (json) {
-        const rv::Timeline timeline = rv::recordPipeline(std::move(assembled), maxCycles);
+        const rv::Timeline timeline = rv::recordPipeline(std::move(assembled), maxCycles, latencies);
         std::cout << rv::toJson(timeline) << '\n';
         return exitStatus(timeline.result(), maxCycles, false);
     }
-    const rv::Program& program = assembled.words;
-    return model == "iss" ? simulate<rv::Iss>(program, trace, stats, maxCycles)
-                          : simulate<rv::Pipeline>(program, trace, stats, maxCycles);
+    const rv::InstructionMemory program(assembled.words);
+    return model == "iss" ? simulate(rv::Iss(program), trace, stats, maxCycles)
+                          : simulate(rv::Pipeline(program, latencies), trace, stats, maxCycles);
 }

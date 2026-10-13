@@ -5,6 +5,9 @@ The browser sends a program to the backend API (`../backend`), which assembles a
 returns a timeline of every cycle ([format](../docs/timeline-format.md)). The page is a pure function of that timeline
 and the current cycle: stepping, scrubbing and playback never re-run the simulator.
 
+The site has two pages: a landing page (`index.html`) with the guide, the instruction reference and the timing
+model, and the simulator (`simulator/index.html`). The landing page's button opens the simulator.
+
 > Status: every panel works. The pipeline panel is a simplified five-stage view (features/datapath) until the full
 > datapath diagram is drawn as an SVG.
 
@@ -65,7 +68,8 @@ repository is renamed.
 
 ```
 src/
-  main.jsx, App.jsx    entry point; App wires the layout and features together
+  main.jsx, App.jsx    simulator page entry point; App wires the layout and features together
+  landing/             the landing page: guide, instruction reference, timing model (main.jsx, Landing.jsx)
   api/                 talking to the backend, nothing else
     client.js          fetch wrapper, request cancellation, error responses
     endpoints.js       simulate, assemble, listExamples, getExample, health
@@ -86,11 +90,12 @@ src/
     timing-chart/      rows = instructions, columns = cycles
     controls/          transport bar (with keyboard shortcuts) and scrubber
     datapath/          the five stages this cycle (simplified until the datapath SVG)
+    settings/          the timing menu: cycles for multiply, divide, load and store
     machine/           registers and memory panel with tabs and number format
     registers/  memory/  event-log/  stats/  examples/
   components/          shared UI: Panel, InstructionChip
   layout/              the page grid
-  styles/              tokens.css (colours, spacing, instruction palette), global.css
+  styles/              tokens.css (colours, spacing, instruction palette), global.css, base.js (both pages import it)
 scripts/
   generate-fixtures.mjs  runs ../build/rvsim --json on ../tests/programs/*.s
 tests/

@@ -22,7 +22,7 @@
 
 .item dd {
   margin: 0;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -38,4 +38,9 @@
 .quiet {
   color: var(--ink-muted);
   font-size: 14px;
+}
+
+.latencies {
+  color: var(--ink-muted);
+  letter-spacing: 0;
 }

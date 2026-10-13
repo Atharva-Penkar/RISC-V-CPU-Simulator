@@ -52,6 +52,7 @@ describe("API", () => {
     assert.equal(response.status, 200);
     assert.deepEqual(body.simulator, { rvsim: true, rvasm: true });
     assert.equal(body.limits.maxCyclesLimit, 10000);
+    assert.equal(body.limits.maxLatency, 100);
     assert.equal(response.headers.get("access-control-allow-origin"), "*");
   });
 
@@ -139,6 +140,16 @@ describe("API", () => {
     assert.deepEqual(faulted.body.outcome.fault, { kind: "load-out-of-range", pc: 4, address: 256 });
     assert.equal(faulted.body.final.memory.bytes, 256);
 
+    const source = "addi x1, x0, 6\nmul x2, x1, x1\nsw x2, 0(x0)";
+    const fast = await post(`${server.url}/api/simulate`, { source });
+    const slow = await post(`${server.url}/api/simulate`, { source, latencies: { multiply: 4, store: 3 } });
+    assert.equal(slow.status, 200);
+    assert.deepEqual(slow.body.latencies, { multiply: 4, divide: 1, load: 1, store: 3 });
+    assert.equal(slow.body.stats.cycles, fast.body.stats.cycles + 5);
+    assert.equal(slow.body.stats.executeStalls, 3);
+    assert.equal(slow.body.stats.memoryStalls, 2);
+    assert.equal(slow.body.final.registers[2], 36);
+
     const looped = await post(`${server.url}/api/simulate`, { source: "l: jal x0, l", maxCycles: 25 });
     assert.equal(looped.body.outcome.status, "cycle-limit");
     assert.equal(looped.body.cycles.length, 25);
@@ -150,6 +161,11 @@ describe("API", () => {
     assert.equal((await post(`${server.url}/api/simulate`, { source: "ebreak", maxCycles: 0 })).status, 400);
     assert.equal((await post(`${server.url}/api/simulate`, { source: "ebreak", maxCycles: 10001 })).status, 400);
     assert.equal((await post(`${server.url}/api/simulate`, { source: "ebreak", maxCycles: 1.5 })).status, 400);
+    for (const latencies of [5, [], { multiply: 0 }, { divide: 101 }, { load: 2.5 }, { cache: 2 }]) {
+      const response = await post(`${server.url}/api/simulate`, { source: "ebreak", latencies });
+      assert.equal(response.status, 400, JSON.stringify(latencies));
+      assert.equal(response.body.error.code, "INVALID_LATENCIES");
+    }
     const invalid = await post(`${server.url}/api/simulate`, "{not json");
     assert.equal(invalid.status, 400);
     assert.equal(invalid.body.error.code, "INVALID_JSON");

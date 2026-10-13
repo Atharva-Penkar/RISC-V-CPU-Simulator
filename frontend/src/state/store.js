@@ -12,6 +12,17 @@ export const SPEEDS = [1, 2, 4, 8, 16];
 
 export const DEFAULT_MAX_CYCLES = 1000;
 
+/** @typedef {import("../timeline/types.js").Latencies} Latencies */
+
+/** The classic 5-stage pipeline: every stage takes one cycle. */
+export const IDEAL_LATENCIES = /** @type {Latencies} */ (Object.freeze({ multiply: 1, divide: 1, load: 1, store: 1 }));
+
+/** Ballpark figures for a simple in-order core: a 3-stage multiplier, a radix-2 divider, a short cache hit. */
+export const TYPICAL_LATENCIES = /** @type {Latencies} */ (Object.freeze({ multiply: 3, divide: 32, load: 3, store: 3 }));
+
+/** Largest latency the backend accepts. */
+export const MAX_LATENCY = 100;
+
 export const DEFAULT_SOURCE = `# Sums 4 + 3 + 2 + 1 into memory, then reads it back.
         addi x1, x0, 4          # counter
         addi x2, x0, 0          # sum
@@ -41,6 +52,7 @@ export const DEMO_EXAMPLE = { id: "demo", description: "Sums 4 + 3 + 2 + 1 into 
  * @property {string} source         the program in the editor
  * @property {Example | null} example  the example in the editor, until it is edited
  * @property {number} maxCycles      cycle limit sent with each run
+ * @property {Latencies} latencies   cycles a multiply/divide spends in EX and a load/store in MEM
  * @property {number} runId          bumped by retry() to run the same source again
  * @property {RunStatus} status      state of the latest run
  * @property {Diagnostic[]} diagnostics  assembly errors of the latest run
@@ -59,6 +71,7 @@ function initialState() {
     source: DEFAULT_SOURCE,
     example: DEMO_EXAMPLE,
     maxCycles: DEFAULT_MAX_CYCLES,
+    latencies: IDEAL_LATENCIES,
     runId: 0,
     status: "idle",
     diagnostics: [],
@@ -125,6 +138,16 @@ export function createAppStore(overrides = {}) {
     /** @param {number} maxCycles */
     setMaxCycles(maxCycles) {
       set({ maxCycles });
+    },
+
+    /**
+     * Changes how many cycles the slow operations take; the program runs again with them.
+     * @param {Partial<Latencies>} change
+     */
+    setLatencies(change) {
+      const latencies = { ...state.latencies, ...change };
+      const same = Object.keys(latencies).every((key) => latencies[key] === state.latencies[key]);
+      if (!same) set({ latencies, stale: state.timeline !== null });
     },
 
     /** Runs the current source again, e.g. after a network error. */

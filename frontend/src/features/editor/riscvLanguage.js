@@ -1,11 +1,11 @@
 // Syntax highlighting for the assembler's dialect: one statement per line or per ';', an optional
-// "label:" prefix, '#' comments, registers x0..x31 (or ABI names), decimal and 0x immediates, and
+// "label:" prefix, '#' comments, registers x0..x31 (the assembler takes no ABI names), decimal and 0x immediates, and
 // memory operands written imm[xN] or imm(xN).
 
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 
-const REGISTER = /^(x([0-9]|[12][0-9]|3[01])|zero|ra|sp|gp|tp|fp|t[0-6]|s([0-9]|1[01])|a[0-7])$/i;
+const REGISTER = /^x([0-9]|[12][0-9]|3[01])$/i;
 
 /** @typedef {{ statementStart: boolean }} State */
 

@@ -2,7 +2,7 @@
 /** @typedef {import("./types.js").Program} Program */
 /** @typedef {import("./types.js").Diagnostic} Diagnostic */
 
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
 
 /** The document is not one this viewer understands (wrong format, version or shape). */
 export class TimelineFormatError extends Error {

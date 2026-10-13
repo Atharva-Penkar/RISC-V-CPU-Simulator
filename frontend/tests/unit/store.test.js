@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { createAppStore, lastCycle } from "../../src/state/store.js";
+import { createAppStore, IDEAL_LATENCIES, lastCycle } from "../../src/state/store.js";
 import { loadTimeline } from "./fixtures.js";
 
 /** A store holding a finished run of the forwarding fixture. */
@@ -89,6 +89,20 @@ describe("app store", () => {
     assert.equal(state.status, "done");
     assert.equal(state.stale, false);
     assert.equal(state.cycle, Math.min(20, lastCycle(state)));
+  });
+});
+
+describe("latencies", () => {
+  test("start ideal, change one at a time and mark the run stale", () => {
+    const store = storeWithRun();
+    assert.deepEqual(store.getState().latencies, IDEAL_LATENCIES);
+    let calls = 0;
+    store.subscribe(() => calls++);
+    store.actions.setLatencies({ multiply: 3 });
+    assert.deepEqual(store.getState().latencies, { multiply: 3, divide: 1, load: 1, store: 1 });
+    assert.equal(store.getState().stale, true);
+    store.actions.setLatencies({ multiply: 3 });
+    assert.equal(calls, 1, "an unchanged value is not a change");
   });
 });
 

@@ -18,7 +18,7 @@ inline constexpr std::size_t kStageCount = 5;
 
 /*why a stage holds no instruction although the pipeline is running*/
 enum class BubbleReason : uint8_t {
-    Stall,  // inserted into ID/EX while a load-use hazard holds ID
+    Stall,  // inserted behind a stage that holds its instruction: ID in a load-use stall, a busy EX or MEM
     Flush,  // left behind by an instruction squashed after a taken branch or jump
 };
 
@@ -28,7 +28,7 @@ struct StageSlot {
     Kind kind = Kind::Empty;
     uint32_t instance = 0;                      // Kind::Instruction
     BubbleReason bubble = BubbleReason::Stall;  // Kind::Bubble
-    bool stalled = false;                       // held in place by a load-use stall this cycle
+    bool stalled = false;                       // held in place this cycle: a load-use stall, or a busy stage ahead
 };
 
 /*what finally happened to a dynamic instruction*/
@@ -70,6 +70,14 @@ struct StallRecord {
     uint32_t waiting = 0;   // instance held in ID
     uint32_t load = 0;      // the load in EX
     Reg reg;                // register the load writes and the waiting instruction reads
+};
+
+/*an instruction spending more than one cycle in EX (multiply, divide) or MEM (load, store)*/
+struct BusyRecord {
+    Stage stage = Stage::EX;
+    uint32_t instance = 0;
+    unsigned cycle = 1;     // which of its cycles in the stage this is, 1-based
+    unsigned latency = 1;   // cycles it needs in the stage
 };
 
 /*a taken branch or jump in EX squashed the instructions fetched behind it*/
@@ -118,7 +126,7 @@ enum class NextPcSource : uint8_t {
     Sequential,     // PC + 4
     BranchTarget,   // a taken branch in EX
     JumpTarget,     // JAL/JALR in EX
-    Hold,           // load-use stall: PC is not written
+    Hold,           // a stall (load-use, or a busy EX or MEM): PC is not written
     Stopped,        // fetching has stopped (end of program)
 };
 
@@ -128,6 +136,7 @@ struct CycleRecord {
     std::array<StageSlot, kStageCount> stages{};    // indexed by Stage
     std::vector<ForwardRecord> forwards;
     std::optional<StallRecord> stall;
+    std::vector<BusyRecord> busy;                   // multi-cycle operations in EX and MEM, in pipeline order
     std::optional<FlushRecord> flush;
     std::optional<ExecuteRecord> execute;
     std::optional<MemoryRecord> memory;
@@ -152,6 +161,7 @@ public:
     const CycleRecord& at(std::size_t cycle) const { return cycles_.at(cycle - 1); }
 
     const RunResult& result() const { return result_; }
+    const Latencies& latencies() const { return latencies_; }
     /*the instance that faulted or halted, when the outcome is Faulted or Halted*/
     std::optional<uint32_t> stopInstance() const { return stopInstance_; }
 
@@ -165,7 +175,7 @@ public:
 
 private:
     friend class Pipeline;
-    friend Timeline recordPipeline(AssembledProgram program, std::size_t maxCycles);
+    friend Timeline recordPipeline(AssembledProgram program, std::size_t maxCycles, Latencies latencies);
 
     Program words_;
     std::vector<SourceLocation> sources_;
@@ -174,12 +184,13 @@ private:
     std::vector<uint32_t> occurrences_;     // fetches so far per static instruction
     std::vector<CycleRecord> cycles_;
     RunResult result_;
+    Latencies latencies_;
     std::optional<uint32_t> stopInstance_;
     RegisterFile finalRegisters_;
     DataMemory finalMemory_;
 };
 
 /*runs the program on the pipeline and records every cycle*/
-Timeline recordPipeline(AssembledProgram program, std::size_t maxCycles = kMaxCycles);
+Timeline recordPipeline(AssembledProgram program, std::size_t maxCycles = kMaxCycles, Latencies latencies = {});
 
 }  // namespace rv

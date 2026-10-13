@@ -23,12 +23,25 @@ const extraPrograms = {
   "assembly-errors": "addi x1, x0, 5\nfoo x1, x2\nadd x2, x1\n",
 };
 
+/** Programs run with multi-cycle operations: [source, latencies]. */
+const latencyPrograms = {
+  "latency-slow": [
+    "addi x1, x0, 6\nmul x2, x1, x1\nadd x3, x2, x1\nsw x3, 0(x0)\nlw x4, 0(x0)\naddi x5, x4, 1\ndiv x6, x5, x1\n",
+    { multiply: 3, divide: 4, load: 2, store: 2 },
+  ],
+};
+
+const LATENCY_FLAGS = { multiply: "--mul-latency", divide: "--div-latency", load: "--load-latency", store: "--store-latency" };
+
 /**
  * @param {string} name
  * @param {string} source
+ * @param {Record<string, number>} [latencies]
  */
-function generate(name, source) {
-  const result = spawnSync(rvsim, ["--json", "--max-cycles", "120"], { input: source, encoding: "utf8" });
+function generate(name, source, latencies = {}) {
+  const latencyArgs = Object.entries(latencies).flatMap(([key, value]) => [LATENCY_FLAGS[key], String(value)]);
+  const args = ["--json", "--max-cycles", "120", ...latencyArgs];
+  const result = spawnSync(rvsim, args, { input: source, encoding: "utf8" });
   if (result.error) throw new Error(`Cannot run ${rvsim}: ${result.error.message}. Build it with cmake first.`);
   // Exit status 0 finished/halted, 1 assembly errors, 2 cycle limit, 3 fault; all print a JSON document.
   const document = JSON.parse(result.stdout);
@@ -42,3 +55,4 @@ for (const file of readdirSync(programsDir).filter((f) => f.endsWith(".s")).sort
   generate(path.basename(file, ".s"), readFileSync(path.join(programsDir, file), "utf8"));
 }
 for (const [name, source] of Object.entries(extraPrograms)) generate(name, source);
+for (const [name, [source, latencies]] of Object.entries(latencyPrograms)) generate(name, source, latencies);

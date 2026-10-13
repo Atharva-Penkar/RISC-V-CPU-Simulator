@@ -10,7 +10,7 @@ const NEXT_PC = {
   "pc+4": "PC + 4",
   "branch-target": "branch target",
   "jump-target": "jump target",
-  hold: "held (stall)",
+  hold: "held",
   stopped: "stopped",
 };
 
@@ -36,6 +36,10 @@ export default function Datapath() {
           let body;
           let note = null;
           if (content.kind === "instance") {
+            if (content.busy) {
+              classes.push(styles.busy);
+              note = `busy ${content.busy.cycle}/${content.busy.of}`;
+            }
             if (content.stalled) {
               classes.push(styles.stalled);
               note = "stalled";
@@ -81,6 +85,12 @@ export default function Datapath() {
               stall: {registerName(record.stall.register)} not loaded yet; bubble into EX
             </li>
           )}
+          {record.busy.map((b) => (
+            <li key={b.stage} className={styles.stallText}>
+              {b.stage} busy: cycle {b.cycle} of {b.of}
+              {b.cycle < b.of ? "; the stages behind it wait" : "; done this cycle"}
+            </li>
+          ))}
           {record.flush && <li className={styles.flushText}>flush: fetch redirected to {hex(record.flush.target)}</li>}
         </ul>
       )}

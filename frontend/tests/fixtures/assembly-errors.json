@@ -1,1 +1,1 @@
-{"source":"addi x1, x0, 5\nfoo x1, x2\nadd x2, x1\n","timeline":{"format":"rv-timeline","version":1,"ok":false,"error":{"stage":"assemble","diagnostics":[{"line":2,"column":1,"message":"unknown instruction 'foo'"},{"line":3,"column":1,"message":"ADD expects 3 operands, got 2"}]}}}
+{"source":"addi x1, x0, 5\nfoo x1, x2\nadd x2, x1\n","timeline":{"format":"rv-timeline","version":2,"ok":false,"error":{"stage":"assemble","diagnostics":[{"line":2,"column":1,"message":"unknown instruction 'foo'"},{"line":3,"column":1,"message":"ADD expects 3 operands, got 2"}]}}}

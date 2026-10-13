@@ -18,6 +18,23 @@ enum class BubbleReason : uint8_t;
 
 inline constexpr std::size_t kMaxCycles = 10000;    // guards against programs that never terminate
 
+/*how many cycles the slow operations spend in their stage. 1 everywhere is the classic 5-stage pipeline;
+larger values model an iterative multiplier or divider in EX, or a slower memory in MEM. A stage that is
+still busy holds itself and every stage behind it, and sends a bubble on*/
+struct Latencies {
+    unsigned multiply = 1;  // MUL, MULH, MULHSU, MULHU in EX
+    unsigned divide = 1;    // DIV, DIVU, REM, REMU in EX
+    unsigned load = 1;      // loads in MEM
+    unsigned store = 1;     // stores in MEM
+
+    static constexpr unsigned kMax = 100;
+    bool valid() const {
+        auto ok = [](unsigned value) { return value >= 1 && value <= kMax; };
+        return ok(multiply) && ok(divide) && ok(load) && ok(store);
+    }
+    bool operator==(const Latencies&) const = default;
+};
+
 struct Control {
     bool readsRs1 = false;
     bool readsRs2 = false;
@@ -107,6 +124,8 @@ struct RunStats {
     std::size_t cycles = 0;
     std::size_t retired = 0;        // instructions that completed
     std::size_t stalls = 0;         // cycles a load-use hazard held the pipeline
+    std::size_t executeStalls = 0;  // cycles a multi-cycle multiply or divide held EX and the stages behind it
+    std::size_t memoryStalls = 0;   // cycles a multi-cycle load or store held MEM and the stages behind it
     std::size_t flushes = 0;        // wrong-path instructions discarded
     std::size_t redirects = 0;      // taken branches and jumps
 
@@ -139,10 +158,11 @@ private:
 /*5-stage pipeline (IF, ID, EX, MEM, WB) with full forwarding into EX, a one-cycle stall for a load
 followed by a dependent instruction, and branches and jumps resolved in EX, which flush IF/ID and ID/EX.
 Faults and halts take effect when the instruction reaches MEM, so they are precise: every older
-instruction completes and no younger one has changed any state*/
+instruction completes and no younger one has changed any state. Multiply, divide, load and store can
+take several cycles (Latencies); the busy stage holds the stages behind it*/
 class Pipeline {
 public:
-    explicit Pipeline(InstructionMemory program);
+    explicit Pipeline(InstructionMemory program, Latencies latencies = {});
 
     RunResult run(Tracer& tracer, std::size_t maxCycles = kMaxCycles);
 
@@ -201,6 +221,8 @@ private:
     /*what happened in one cycle, for the trace*/
     struct CycleEvents {
         bool stalled = false;
+        bool executeBusy = false;
+        bool memoryBusy = false;
         std::size_t flushed = 0;
         ForwardSource rs1 = ForwardSource::RegisterFile;
         ForwardSource rs2 = ForwardSource::RegisterFile;
@@ -214,12 +236,18 @@ private:
     void trace(Tracer& tracer, const CycleEvents& events) const;
     /*a new dynamic instance for a fetch at pc*/
     uint32_t newInstance(uint32_t pc);
+    /*cycles the instruction in a latch needs in EX or MEM*/
+    unsigned executeLatency(const IdEx& latch) const;
+    unsigned memoryLatency(const ExMem& latch) const;
 
     InstructionMemory imem_;
     RegisterFile regs_;
     DataMemory dmem_;
+    Latencies latencies_;
     uint32_t pc_ = 0;
     bool fetching_ = false;     // false once the PC has run past the program
+    unsigned executeCycles_ = 0;    // cycles the instruction in ID/EX has already spent in EX
+    unsigned memoryCycles_ = 0;     // cycles the instruction in EX/MEM has already spent in MEM
     IfId ifid_;
     IdEx idex_;
     ExMem exmem_;

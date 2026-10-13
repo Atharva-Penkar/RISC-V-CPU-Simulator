@@ -39,10 +39,11 @@ Environment variables, all optional:
 ### `POST /api/simulate`
 
 ```json
-{ "source": "addi x1, x0, 5\nadd x2, x1, x1\nebreak", "maxCycles": 500 }
+{ "source": "addi x1, x0, 5\nadd x2, x1, x1\nebreak", "maxCycles": 500, "latencies": { "multiply": 3, "load": 2 } }
 ```
 
-`maxCycles` is optional. The answer (200) is the timeline document described in
+`maxCycles` is optional. `latencies` is optional too: the cycles a multiply or divide spends in EX and a load or
+store in MEM (`multiply`, `divide`, `load`, `store`, each 1 to 100, default 1). The answer (200) is the timeline document described in
 [docs/timeline-format.md](../docs/timeline-format.md): the program with its source map, every dynamic instruction,
 and per cycle the stage occupancy, forwarding, stalls, flushes, EX datapath values, memory and register writes,
 then the outcome, statistics and final state. A program that halts, faults or reaches the cycle limit is still a 200;

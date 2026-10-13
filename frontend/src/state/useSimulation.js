@@ -14,6 +14,7 @@ export const DEBOUNCE_MS = 400;
 export function useSimulation() {
   const source = useAppState((s) => s.source);
   const maxCycles = useAppState((s) => s.maxCycles);
+  const latencies = useAppState((s) => s.latencies);
   const runId = useAppState((s) => s.runId);
 
   useEffect(() => {
@@ -25,7 +26,7 @@ export function useSimulation() {
     const timer = setTimeout(async () => {
       actions.runStarted();
       try {
-        actions.runSucceeded(await simulate(source, { maxCycles, signal: controller.signal }));
+        actions.runSucceeded(await simulate(source, { maxCycles, latencies, signal: controller.signal }));
       } catch (error) {
         if (isAbortError(error)) return;
         const diagnostics = assemblyDiagnostics(error);
@@ -39,5 +40,5 @@ export function useSimulation() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [source, maxCycles, runId]);
+  }, [source, maxCycles, latencies, runId]);
 }

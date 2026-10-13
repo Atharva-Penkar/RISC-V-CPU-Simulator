@@ -32,7 +32,7 @@ describe("parseTimeline", () => {
     const good = loadFixture("forwarding").timeline;
     assert.throws(() => parseTimeline(null), TimelineFormatError);
     assert.throws(() => parseTimeline({ ...good, format: "rv-program" }), /Expected a "rv-timeline"/);
-    assert.throws(() => parseTimeline({ ...good, version: 2 }), /Unsupported rv-timeline version 2/);
+    assert.throws(() => parseTimeline({ ...good, version: 1 }), /Unsupported rv-timeline version 1/);
     assert.throws(() => parseTimeline({ ...good, cycles: undefined }), /cycles/);
     assert.throws(() => parseTimeline({ ...good, cycles: good.cycles.slice(1) }), /Cycle 1 is numbered 2/);
     assert.throws(() => parseTimeline({ ...good, instances: good.instances.slice(1) }), /Instance 0 has id 1/);
@@ -42,7 +42,7 @@ describe("parseTimeline", () => {
 
 describe("parseProgram", () => {
   test("accepts an rv-program document and rejects a timeline", () => {
-    const program = { format: "rv-program", version: 1, ok: true, instructions: [] };
+    const program = { format: "rv-program", version: 2, ok: true, instructions: [] };
     assert.deepEqual(parseProgram(program), { ok: true, value: program });
     assert.throws(() => parseProgram(loadFixture("forwarding").timeline), TimelineFormatError);
   });

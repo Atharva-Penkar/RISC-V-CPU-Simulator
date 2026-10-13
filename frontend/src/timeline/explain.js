@@ -27,7 +27,7 @@ function value(value) {
 
 /** @type {Record<import("./types.js").FaultKind, string>} */
 const FAULT_REASONS = {
-  "illegal-instruction": "is not an RV32I instruction",
+  "illegal-instruction": "is not an RV32IM instruction",
   "fetch-out-of-range": "is outside the program",
   "fetch-misaligned": "is not word aligned",
   "load-out-of-range": "is outside data memory",
@@ -97,6 +97,22 @@ export function explainEvent(timeline, event) {
       return execute.branch?.taken
         ? `EX: ${name(execute.instance)} is taken; fetch continues at ${hex(/** @type {number} */ (execute.target))}.`
         : `EX: ${name(execute.instance)} is not taken; fetch continues in order.`;
+    }
+    case "busy": {
+      const { busy } = event;
+      const instance = timeline.instances[busy.instance];
+      const instruction = instance.instruction === null ? null : timeline.program.instructions[instance.instruction];
+      const progress = `cycle ${busy.cycle} of ${busy.of}`;
+      if (busy.stage === "EX") {
+        const unit = instruction?.aluOp && ["div", "divu", "rem", "remu"].includes(instruction.aluOp) ? "divider" : "multiplier";
+        return busy.cycle < busy.of
+          ? `EX busy: ${name(busy.instance)} is in the ${unit}, ${progress}. ID and IF hold their instructions and a bubble goes to MEM.`
+          : `EX: ${name(busy.instance)} finishes in the ${unit} (${progress}); its result moves on at the end of this cycle.`;
+      }
+      const access = instruction?.control?.memWrite ? "store" : "load";
+      return busy.cycle < busy.of
+        ? `MEM busy: the ${access} ${name(busy.instance)} is waiting on memory, ${progress}. Every stage behind it holds and a bubble goes to WB.`
+        : `MEM: the ${access} ${name(busy.instance)} completes its memory access (${progress}).`;
     }
     case "stall": {
       const { stall } = event;

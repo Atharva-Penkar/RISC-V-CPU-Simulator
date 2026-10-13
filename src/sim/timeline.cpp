@@ -2,8 +2,9 @@
 
 namespace rv {
 
-Timeline recordPipeline(AssembledProgram program, std::size_t maxCycles) {
+Timeline recordPipeline(AssembledProgram program, std::size_t maxCycles, Latencies latencies) {
     Timeline timeline;
+    timeline.latencies_ = latencies;
     timeline.words_ = std::move(program.words);
     timeline.sources_ = std::move(program.sources);
     timeline.occurrences_.assign(timeline.words_.size(), 0);
@@ -13,7 +14,7 @@ Timeline recordPipeline(AssembledProgram program, std::size_t maxCycles) {
     for (uint32_t i = 0; i < timeline.words_.size(); i++)
         timeline.decoded_.push_back(imem.decoded(i * 4));
 
-    Pipeline pipeline(imem);
+    Pipeline pipeline(imem, latencies);
     pipeline.record(timeline);
     Tracer quiet;
     timeline.result_ = pipeline.run(quiet, maxCycles);

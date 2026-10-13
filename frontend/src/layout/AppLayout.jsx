@@ -17,7 +17,11 @@ export default function AppLayout({ status, editor, datapath, timing, events, ma
   return (
     <div className={styles.page}>
       <header className={styles.titleBar}>
-        <h1 className={styles.title}>RISC-V Pipeline Simulator</h1>
+        <h1 className={styles.title}>
+          <a href={import.meta.env.BASE_URL} title="Home: guide and instruction reference">
+            RISC-V Pipeline Simulator
+          </a>
+        </h1>
         <div className={styles.status}>{status}</div>
       </header>
       <main className={styles.grid}>

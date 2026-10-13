@@ -48,11 +48,11 @@ function validated(parse) {
  * Runs a program on the pipeline and returns every recorded cycle.
  * Throws ApiError ASSEMBLY_FAILED (see assemblyDiagnostics) when the program does not assemble.
  * @param {string} source
- * @param {{ maxCycles?: number, signal?: AbortSignal }} [options]
+ * @param {{ maxCycles?: number, latencies?: Partial<import("../timeline/types.js").Latencies>, signal?: AbortSignal }} [options]
  * @returns {Promise<Timeline>}
  */
-export async function simulate(source, { maxCycles, signal } = {}) {
-  const document = await request("/api/simulate", { method: "POST", body: { source, maxCycles }, signal });
+export async function simulate(source, { maxCycles, latencies, signal } = {}) {
+  const document = await request("/api/simulate", { method: "POST", body: { source, maxCycles, latencies }, signal });
   return validated(() => unwrap(parseTimeline(document)));
 }
 

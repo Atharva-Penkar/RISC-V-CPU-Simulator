@@ -1,4 +1,8 @@
-# Timeline JSON format (version 1)
+# Timeline JSON format (version 2)
+
+Version 2 adds the M extension and configurable latencies: the top-level `latencies`, each cycle's `busy` list, the
+`executeStalls` and `memoryStalls` statistics, and `stalled` instructions and `stall` bubbles caused by a busy EX or
+MEM stage as well as by load-use hazards.
 
 `rvsim --json` and the backend's `POST /api/simulate` return the whole pipeline run as one JSON document. The
 simulator runs the program once and records every cycle; a viewer shows cycle N by reading `cycles[N - 1]`, without
@@ -16,9 +20,10 @@ signed or hex in the viewer. Cycles are 1-based, instance ids and instruction id
 ```jsonc
 {
   "format": "rv-timeline",
-  "version": 1,
+  "version": 2,
   "ok": true,
   "model": "pipeline",
+  "latencies": { "multiply": 1, "divide": 1, "load": 1, "store": 1 },   // cycles in EX (multiply, divide) or MEM
   "program": { "instructions": [ /* Instruction */ ] },
   "instances": [ /* Instance */ ],
   "cycles": [ /* Cycle, cycles[i].cycle == i + 1 */ ],
@@ -31,7 +36,7 @@ signed or hex in the viewer. Cycles are 1-based, instance ids and instruction id
 If the program does not assemble, the document is instead:
 
 ```json
-{ "format": "rv-timeline", "version": 1, "ok": false,
+{ "format": "rv-timeline", "version": 2, "ok": false,
   "error": { "stage": "assemble", "diagnostics": [ { "line": 2, "column": 14, "message": "immediate '99999' does not fit in 12 bits" } ] } }
 ```
 
@@ -79,6 +84,7 @@ What each stage worked on during the cycle, what moved between stages, and what 
   "stages": { "IF": Slot, "ID": Slot, "EX": Slot, "MEM": Slot, "WB": Slot },
   "forwarding": [ Forward ],
   "stall": Stall | null,
+  "busy": [ Busy ],
   "flush": Flush | null,
   "execute": Execute | null,
   "memory": Memory | null,
@@ -93,8 +99,8 @@ What each stage worked on during the cycle, what moved between stages, and what 
 | --- | --- |
 | `null` | Nothing there: the pipeline is filling or draining. |
 | `{ "instance": 3 }` | Instance 3 is in this stage. |
-| `{ "instance": 3, "stalled": true }` | Held in place by a load-use stall (only IF and ID). |
-| `{ "bubble": "stall" }` | A bubble inserted by a load-use stall. It starts in EX and moves down. |
+| `{ "instance": 3, "stalled": true }` | Held in place: by a load-use stall or a busy EX (IF and ID), or by a busy MEM (IF, ID and EX). |
+| `{ "bubble": "stall" }` | A bubble inserted behind a stage that holds its instruction: EX after a load-use stall, MEM while EX is busy, WB while MEM is busy. It moves down. |
 | `{ "bubble": "flush" }` | The hole left by an instruction squashed after a taken branch or jump. |
 
 ### Forward
@@ -116,6 +122,18 @@ A value sent into EX from a later pipeline register instead of the stale value r
 
 The instance in ID (`waiting`) needs `register`, which the load in EX (`load`) has not read from memory yet. ID and
 IF keep their instructions, the PC is not written, and a `stall` bubble enters EX in the next cycle.
+
+### Busy
+
+```json
+{ "stage": "EX", "instance": 2, "cycle": 2, "of": 4 }
+```
+
+An instruction that needs more than one cycle in its stage: a multiply or divide in `EX`, or a load or store in
+`MEM` (see `latencies`). This is its `cycle`-th cycle of `of`. Until its last cycle the stage keeps the instruction,
+the stages behind it hold theirs (`stalled`), the PC is not written, and a `stall` bubble moves on to the next stage.
+A multiply or divide produces its result, and a load or store accesses memory, in its last cycle. The list is empty
+in most cycles and has one entry per busy stage, EX first.
 
 ### Flush
 
@@ -189,10 +207,12 @@ Fault kinds: `illegal-instruction` (`address` is the instruction word), `fetch-o
 ## Stats
 
 ```json
-{ "cycles": 19, "instructions": 11, "cpi": 1.7273, "stalls": 2, "flushes": 2, "redirects": 1 }
+{ "cycles": 19, "instructions": 11, "cpi": 1.7273, "stalls": 2, "executeStalls": 0, "memoryStalls": 0,
+  "flushes": 2, "redirects": 1 }
 ```
 
-`stalls` counts load-use stall cycles, `flushes` squashed instructions, and `redirects` taken branches and jumps.
+`stalls` counts load-use stall cycles, `executeStalls` and `memoryStalls` the cycles a busy EX or MEM held the
+pipeline, `flushes` squashed instructions, and `redirects` taken branches and jumps.
 
 ## State at cycle N
 
@@ -204,7 +224,7 @@ cycle, the result equals `final`.
 ## Program document
 
 ```json
-{ "format": "rv-program", "version": 1, "ok": true, "instructions": [ /* Instruction */ ] }
+{ "format": "rv-program", "version": 2, "ok": true, "instructions": [ /* Instruction */ ] }
 ```
 
-On assembly errors: `{ "format": "rv-program", "version": 1, "ok": false, "error": { "stage": "assemble", "diagnostics": [...] } }`.
+On assembly errors: `{ "format": "rv-program", "version": 2, "ok": false, "error": { "stage": "assemble", "diagnostics": [...] } }`.

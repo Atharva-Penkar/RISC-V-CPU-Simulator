@@ -61,8 +61,19 @@ export function instanceInfo(timeline, instanceId) {
 
 /**
  * @typedef {{ kind: "empty" } | { kind: "bubble", reason: "stall" | "flush" }
- *   | { kind: "instance", instance: number, stalled: boolean }} StageContent
+ *   | { kind: "instance", instance: number, stalled: boolean, busy: { cycle: number, of: number } | null }} StageContent
  */
+
+/**
+ * The multi-cycle progress of the instruction in a stage during a cycle, if it is a slow operation.
+ * @param {import("./types.js").Cycle | undefined} record
+ * @param {StageName} stage
+ * @returns {{ cycle: number, of: number } | null}
+ */
+function busyIn(record, stage) {
+  const busy = record?.busy.find((b) => b.stage === stage);
+  return busy ? { cycle: busy.cycle, of: busy.of } : null;
+}
 
 /**
  * What each stage works on during a cycle, in pipeline order.
@@ -77,7 +88,9 @@ export function stageOccupancy(timeline, cycle) {
     /** @type {StageContent} */
     let content = { kind: "empty" };
     if (slot && "bubble" in slot) content = { kind: "bubble", reason: slot.bubble };
-    else if (slot) content = { kind: "instance", instance: slot.instance, stalled: slot.stalled === true };
+    else if (slot) {
+      content = { kind: "instance", instance: slot.instance, stalled: slot.stalled === true, busy: busyIn(record, stage) };
+    }
     return { stage, content };
   });
 }
@@ -106,6 +119,7 @@ export function linesInPipeline(timeline, cycle) {
  * @property {number} cycle
  * @property {StageName} stage
  * @property {boolean} stalled
+ * @property {{ cycle: number, of: number } | null} busy  a multiply/divide in EX or a load/store in MEM taking several cycles
  */
 
 /**
@@ -133,7 +147,12 @@ export const timingRows = perTimeline((timeline) => {
     for (const stage of STAGES) {
       const slot = record.stages[stage];
       if (slot && "instance" in slot) {
-        rows[slot.instance].cells.push({ cycle: record.cycle, stage, stalled: slot.stalled === true });
+        rows[slot.instance].cells.push({
+          cycle: record.cycle,
+          stage,
+          stalled: slot.stalled === true,
+          busy: busyIn(record, stage),
+        });
       }
     }
   }
@@ -156,7 +175,8 @@ export const scrubberMarks = perTimeline((timeline) =>
   timeline.cycles
     .map((record) => ({
       cycle: record.cycle,
-      stall: record.stall !== null,
+      // a load-use stall, or a busy EX or MEM holding the stages behind it
+      stall: record.stall !== null || record.busy.some((b) => b.cycle < b.of),
       forward: record.forwarding.length > 0,
       flush: record.flush !== null,
     }))
@@ -167,6 +187,7 @@ export const scrubberMarks = perTimeline((timeline) =>
  * @typedef {{ kind: "forward", forward: import("./types.js").Forward }
  *   | { kind: "stall", stall: import("./types.js").Stall }
  *   | { kind: "flush", flush: import("./types.js").Flush }
+ *   | { kind: "busy", busy: import("./types.js").Busy }
  *   | { kind: "branch", execute: import("./types.js").Execute }
  *   | { kind: "memory", memory: import("./types.js").MemoryAccess }
  *   | { kind: "register-write", write: import("./types.js").RegisterWrite }
@@ -189,6 +210,7 @@ export function cycleEvents(timeline, cycle) {
   if (record.memory) events.push({ kind: "memory", memory: record.memory });
   for (const forward of record.forwarding) events.push({ kind: "forward", forward });
   if (record.execute?.branch) events.push({ kind: "branch", execute: record.execute });
+  for (const busy of record.busy) events.push({ kind: "busy", busy });
   if (record.stall) events.push({ kind: "stall", stall: record.stall });
   if (record.flush) events.push({ kind: "flush", flush: record.flush });
   if (cycle === timeline.cycles.length) events.push({ kind: "outcome", outcome: timeline.outcome });

@@ -159,9 +159,13 @@ export class Simulator {
     return checkDocument(parseDocument(result, "rvasm"), "rv-program", result, "rvasm");
   }
 
-  /** Runs source on the pipeline: the "rv-timeline" document with every cycle recorded. */
-  async simulate(source, maxCycles) {
-    const result = await this.run(this.config.rvsimPath, ["--json", "--max-cycles", String(maxCycles)], source);
+  /**
+   * Runs source on the pipeline: the "rv-timeline" document with every cycle recorded.
+   * latencyArgs are rvsim options such as ["--mul-latency", "3"].
+   */
+  async simulate(source, maxCycles, latencyArgs = []) {
+    const args = ["--json", "--max-cycles", String(maxCycles), ...latencyArgs];
+    const result = await this.run(this.config.rvsimPath, args, source);
     return checkDocument(parseDocument(result, "rvsim"), "rv-timeline", result, "rvsim");
   }
 }

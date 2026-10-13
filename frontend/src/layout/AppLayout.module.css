@@ -20,6 +20,10 @@
   letter-spacing: -0.01em;
 }
 
+.title a {
+  text-decoration: none;
+}
+
 .status {
   min-width: 0;
 }

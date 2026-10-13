@@ -8,6 +8,7 @@ const KINDS = {
   memory: { label: "MEM", className: styles.memory },
   forward: { label: "fwd", className: styles.forward },
   branch: { label: "EX", className: styles.branch },
+  busy: { label: "busy", className: styles.busy },
   stall: { label: "stall", className: styles.stall },
   flush: { label: "flush", className: styles.flush },
   outcome: { label: "end", className: styles.outcome },

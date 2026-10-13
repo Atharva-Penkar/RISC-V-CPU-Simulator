@@ -84,6 +84,26 @@ uint32_t aluExecute(AluOp op, uint32_t a, uint32_t b) {
         case AluOp::Ltu: return a < b;
         case AluOp::Geu: return a >= b;
         case AluOp::PassB: return b;
+        case AluOp::Mul: return a * b;
+        case AluOp::Mulh: return static_cast<uint32_t>((int64_t{sa} * int64_t{sb}) >> 32);
+        case AluOp::Mulhsu: return static_cast<uint32_t>((int64_t{sa} * static_cast<int64_t>(b)) >> 32);
+        case AluOp::Mulhu: return static_cast<uint32_t>((uint64_t{a} * uint64_t{b}) >> 32);
+        /*division never traps in RISC-V: dividing by zero gives all ones (quotient) or the dividend
+        (remainder), and the one signed overflow, INT_MIN / -1, gives INT_MIN and remainder 0*/
+        case AluOp::Div:
+            if (b == 0)
+                return 0xFFFFFFFFu;
+            if (sa == INT32_MIN && sb == -1)
+                return a;
+            return static_cast<uint32_t>(sa / sb);
+        case AluOp::Divu: return b == 0 ? 0xFFFFFFFFu : a / b;
+        case AluOp::Rem:
+            if (b == 0)
+                return a;
+            if (sa == INT32_MIN && sb == -1)
+                return 0;
+            return static_cast<uint32_t>(sa % sb);
+        case AluOp::Remu: return b == 0 ? a : a % b;
     }
     return 0;
 }
@@ -127,7 +147,7 @@ std::string describe(const Fault& fault) {
     const std::string address = toHex(fault.address);
     switch (fault.kind) {
         case FaultKind::IllegalInstruction:
-            return "illegal instruction" + at + address + " is not an RV32I instruction";
+            return "illegal instruction" + at + address + " is not an RV32IM instruction";
         case FaultKind::FetchOutOfRange:
             return "instruction fetch fault: jump target " + address + " is outside the program";
         case FaultKind::FetchMisaligned:

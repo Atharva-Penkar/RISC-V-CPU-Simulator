@@ -1,4 +1,4 @@
-// RV32I instruction set definition: registers, instruction kinds and the instruction table
+// RV32IM instruction set definition (the base integer set and the multiply/divide extension): registers, instruction kinds and the instruction table
 // shared by the assembler, the decoder and the ALU control.
 #pragma once
 
@@ -40,8 +40,20 @@ enum class Kind : uint8_t { Alu, AluImm, Shift, Load, Store, Branch, Lui, Auipc,
 /*encoding layout*/
 enum class Format : uint8_t { R, I, S, B, U, J };
 
-/*branch comparisons return 1 when the condition holds; PassB forwards the second operand (LUI)*/
-enum class AluOp : uint8_t { Add, Sub, And, Or, Xor, Sll, Srl, Sra, Slt, Sltu, Eq, Ne, Lt, Ge, Ltu, Geu, PassB };
+/*branch comparisons return 1 when the condition holds; PassB forwards the second operand (LUI).
+Mul..Remu are the M extension, computed by the multiplier and the divider instead of the ALU proper*/
+enum class AluOp : uint8_t {
+    Add, Sub, And, Or, Xor, Sll, Srl, Sra, Slt, Sltu, Eq, Ne, Lt, Ge, Ltu, Geu, PassB,
+    Mul, Mulh, Mulhsu, Mulhu, Div, Divu, Rem, Remu,
+};
+
+/*the M extension's two functional units, which may take several cycles in EX*/
+constexpr bool isMultiply(AluOp op) {
+    return op == AluOp::Mul || op == AluOp::Mulh || op == AluOp::Mulhsu || op == AluOp::Mulhu;
+}
+constexpr bool isDivide(AluOp op) {
+    return op == AluOp::Div || op == AluOp::Divu || op == AluOp::Rem || op == AluOp::Remu;
+}
 
 constexpr Format formatOf(Kind kind) {
     switch (kind) {
@@ -101,6 +113,15 @@ inline constexpr auto kIsa = std::to_array<InstrSpec>({
     {"SRA",   Kind::Alu,    0b101, 0b0100000, AluOp::Sra},
     {"OR",    Kind::Alu,    0b110, 0b0000000, AluOp::Or},
     {"AND",   Kind::Alu,    0b111, 0b0000000, AluOp::And},
+
+    {"MUL",    Kind::Alu,   0b000, 0b0000001, AluOp::Mul},      // M extension: low 32 bits of the product
+    {"MULH",   Kind::Alu,   0b001, 0b0000001, AluOp::Mulh},     // high 32 bits, signed x signed
+    {"MULHSU", Kind::Alu,   0b010, 0b0000001, AluOp::Mulhsu},   // high 32 bits, signed x unsigned
+    {"MULHU",  Kind::Alu,   0b011, 0b0000001, AluOp::Mulhu},    // high 32 bits, unsigned x unsigned
+    {"DIV",    Kind::Alu,   0b100, 0b0000001, AluOp::Div},
+    {"DIVU",   Kind::Alu,   0b101, 0b0000001, AluOp::Divu},
+    {"REM",    Kind::Alu,   0b110, 0b0000001, AluOp::Rem},
+    {"REMU",   Kind::Alu,   0b111, 0b0000001, AluOp::Remu},
 
     {"ADDI",  Kind::AluImm, 0b000, 0, AluOp::Add},
     {"SLTI",  Kind::AluImm, 0b010, 0, AluOp::Slt},

@@ -27,7 +27,8 @@ function reveal(container, target, headerHeight, labelWidth) {
 
 /**
  * The classic pipeline diagram, in the style of the portfolio's figure: one row per executed
- * instruction, one column per cycle, ink-outlined stages and solid blue stalls. Flushed instructions are
+ * instruction, one column per cycle, ink-outlined stages and solid blue stalls. A slow multiply, divide,
+ * load or store is shaded with its progress (2/3) in each of its cycles. Flushed instructions are
  * dashed red; the cycle being viewed is shaded and later cycles are faded. Click a cell to go to its cycle.
  */
 export default function TimingChart() {
@@ -104,6 +105,7 @@ export default function TimingChart() {
                   cycle={cell.cycle}
                   stage={cell.stage}
                   stalled={cell.stalled}
+                  busy={cell.busy}
                   squashed={squashed}
                   fault={row.fate === "faulted" && cell.cycle === row.endCycle}
                   future={cell.cycle > cycle}

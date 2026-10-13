@@ -33,6 +33,15 @@ describe("explainCycle", () => {
     assert.match(allText(loadTimeline("jumps")), /writes the return address 8 to x1/);
   });
 
+  test("explains multi-cycle multiplies, divides, loads and stores", () => {
+    const text = allText(loadTimeline("latency-slow"));
+    assert.match(text, /EX busy: I1 MUL x2, x1, x1 is in the multiplier, cycle 1 of 3\. ID and IF hold their instructions/);
+    assert.match(text, /EX: I1 MUL x2, x1, x1 finishes in the multiplier \(cycle 3 of 3\)/);
+    assert.match(text, /EX busy: I6 DIV x6, x5, x1 is in the divider, cycle 2 of 4/);
+    assert.match(text, /MEM busy: the store I3 SW x3, 0\[x0\] is waiting on memory, cycle 1 of 2\. Every stage behind it holds/);
+    assert.match(text, /MEM: the load I4 LW x4, 0\[x0\] completes its memory access \(cycle 2 of 2\)/);
+  });
+
   test("marks repeated executions", () => {
     const timeline = loadTimeline("loop");
     const repeat = timeline.instances.find((i) => i.occurrence === 2);

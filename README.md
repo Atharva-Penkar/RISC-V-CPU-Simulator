@@ -1,8 +1,8 @@
 # RISC-V CPU Simulator
 
-An assembler and a **5-stage pipelined RISC-V (RV32I) CPU** simulator written in C++20.
+An assembler and a **5-stage pipelined RISC-V (RV32IM) CPU** simulator written in C++20.
 
-- `rvasm` turns RV32I assembly into machine code and reports every error with its line and column.
+- `rvasm` turns RV32IM assembly into machine code and reports every error with its line and column.
 - `rvsim` runs a program on the pipeline, or on a single-cycle reference model (ISS), and prints the final
   registers and data memory. With `--json` it records every pipeline cycle as structured JSON for visualisation
   ([format](docs/timeline-format.md)).
@@ -33,6 +33,10 @@ values are applied together at the end, like a clock edge.
 - **Faults:** a load or store outside data memory or not naturally aligned, an illegal instruction word, or a jump
   outside the program raises a fault and stops the program. Faults are precise: older instructions complete,
   younger ones have no effect, and an illegal word on a flushed wrong path never faults.
+- **Multi-cycle operations:** by default every stage takes one cycle. `--mul-latency`, `--div-latency`,
+  `--load-latency` and `--store-latency` (1 to 100) make multiplies and divides spend that many cycles in EX, and
+  loads and stores in MEM. The busy stage keeps its instruction, everything behind it waits, and a bubble moves on,
+  so a slow divider or memory shows up directly in the cycle count and CPI.
 - **Cycle limit:** a program stops after 10000 cycles by default (`--max-cycles`), so an infinite loop can't hang
   the simulator.
 
@@ -83,6 +87,7 @@ build/rvsim tests/programs/fibonacci.s                # final state on the pipel
 build/rvsim --trace tests/programs/forwarding.s       # pipeline registers, stalls, flushes and forwarding per cycle
 build/rvsim --model iss fib.hex                       # reference model, machine code input
 build/rvsim --json tests/programs/forwarding.s        # every cycle as JSON (pipeline model)
+build/rvsim --mul-latency 3 --div-latency 32 tests/programs/multiply.s   # slow multiplier and divider
 build/rvasm --json tests/programs/forwarding.s        # instructions with their source map
 ```
 
@@ -110,7 +115,9 @@ next:   sw   x1, 0[x3]          # memory operands: imm[reg] or imm(reg)
 - **Immediates:** decimal (`-2`) or hexadecimal (`0xF`). Hexadecimal is read as 32-bit two's complement, so
   `0xFFFFFFFE` is -2. `lui` and `auipc` take the 20-bit upper value.
 - **Case:** mnemonics, registers and labels are case-insensitive.
-- **Instructions:** the RV32I base integer instructions except `fence`; `ecall` and `ebreak` halt the program.
+- **Instructions:** the RV32I base integer instructions except `fence`, and the M extension (`mul`, `mulh`,
+  `mulhsu`, `mulhu`, `div`, `divu`, `rem`, `remu`). `ecall` and `ebreak` halt the program. Division by zero does not
+  trap: the quotient is all ones and the remainder is the dividend, as the ISA specifies.
 
 ## Project layout
 

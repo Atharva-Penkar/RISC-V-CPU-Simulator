@@ -155,6 +155,14 @@ const char* name(AluOp op) {
         case AluOp::Ltu: return "ltu";
         case AluOp::Geu: return "geu";
         case AluOp::PassB: return "pass-b";
+        case AluOp::Mul: return "mul";
+        case AluOp::Mulh: return "mulh";
+        case AluOp::Mulhsu: return "mulhsu";
+        case AluOp::Mulhu: return "mulhu";
+        case AluOp::Div: return "div";
+        case AluOp::Divu: return "divu";
+        case AluOp::Rem: return "rem";
+        case AluOp::Remu: return "remu";
     }
     return "?";
 }
@@ -329,6 +337,16 @@ void writeCycle(JsonWriter& json, const CycleRecord& cycle) {
     else
         json.null();
 
+    json.key("busy").beginArray();
+    for (const BusyRecord& busy : cycle.busy)
+        json.beginObject()
+            .key("stage").string(kStageNames[static_cast<std::size_t>(busy.stage)])
+            .key("instance").number(n(busy.instance))
+            .key("cycle").number(n(busy.cycle))
+            .key("of").number(n(busy.latency))
+            .endObject();
+    json.endArray();
+
     json.key("flush");
     if (cycle.flush) {
         json.beginObject().key("by").number(n(cycle.flush->by)).key("squashed").beginArray();
@@ -407,6 +425,13 @@ std::string toJson(const Timeline& timeline) {
     json.beginObject();
     header(json, "rv-timeline", true);
     json.key("model").string("pipeline");
+    const Latencies& latencies = timeline.latencies();
+    json.key("latencies").beginObject()
+        .key("multiply").number(n(latencies.multiply))
+        .key("divide").number(n(latencies.divide))
+        .key("load").number(n(latencies.load))
+        .key("store").number(n(latencies.store))
+        .endObject();
 
     json.key("program").beginObject().key("instructions").beginArray();
     for (uint32_t i = 0; i < timeline.words().size(); i++)
@@ -455,6 +480,8 @@ std::string toJson(const Timeline& timeline) {
         .key("instructions").number(n(stats.retired))
         .key("cpi").number(stats.cpi())
         .key("stalls").number(n(stats.stalls))
+        .key("executeStalls").number(n(stats.executeStalls))
+        .key("memoryStalls").number(n(stats.memoryStalls))
         .key("flushes").number(n(stats.flushes))
         .key("redirects").number(n(stats.redirects))
         .endObject();
