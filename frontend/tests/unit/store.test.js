@@ -91,3 +91,16 @@ describe("app store", () => {
     assert.equal(state.cycle, Math.min(20, lastCycle(state)));
   });
 });
+
+describe("loaded example", () => {
+  test("is kept while the program is unchanged and dropped on the first edit", () => {
+    const store = createAppStore();
+    assert.equal(store.getState().example?.id, "demo");
+    store.actions.loadProgram("ebreak\n", { id: "halt", description: "Stops." });
+    assert.deepEqual(store.getState().example, { id: "halt", description: "Stops." });
+    store.actions.setSource("ebreak\n");
+    assert.equal(store.getState().example?.id, "halt", "the editor echoing the loaded text is not an edit");
+    store.actions.setSource("ebreak\nnop\n");
+    assert.equal(store.getState().example, null);
+  });
+});

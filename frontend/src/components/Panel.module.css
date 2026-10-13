@@ -22,6 +22,14 @@
   color: var(--ink-muted);
 }
 
+.caption {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 .actions {
   display: flex;
   align-items: center;

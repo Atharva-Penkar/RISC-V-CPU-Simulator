@@ -25,10 +25,21 @@ loop:   add  x2, x2, x1         # x1 is forwarded from the instruction ahead
 `;
 
 /**
+ * An example program, as shown in the Program panel's caption.
+ * @typedef {object} Example
+ * @property {string} id
+ * @property {string} description
+ */
+
+/** The built-in demo, loaded at start-up. */
+export const DEMO_EXAMPLE = { id: "demo", description: "Sums 4 + 3 + 2 + 1 into memory, then reads it back." };
+
+/**
  * @typedef {"idle" | "running" | "done" | "assembly-error" | "error"} RunStatus
  *
  * @typedef {object} AppState
  * @property {string} source         the program in the editor
+ * @property {Example | null} example  the example in the editor, until it is edited
  * @property {number} maxCycles      cycle limit sent with each run
  * @property {number} runId          bumped by retry() to run the same source again
  * @property {RunStatus} status      state of the latest run
@@ -46,6 +57,7 @@ loop:   add  x2, x2, x1         # x1 is forwarded from the instruction ahead
 function initialState() {
   return {
     source: DEFAULT_SOURCE,
+    example: DEMO_EXAMPLE,
     maxCycles: DEFAULT_MAX_CYCLES,
     runId: 0,
     status: "idle",
@@ -97,15 +109,17 @@ export function createAppStore(overrides = {}) {
   const actions = {
     /** @param {string} source */
     setSource(source) {
-      if (source !== state.source) set({ source, stale: state.timeline !== null });
+      // Editing the program means it is no longer the example that was loaded.
+      if (source !== state.source) set({ source, example: null, stale: state.timeline !== null });
     },
 
     /**
      * Replaces the program, e.g. with an example, and goes back to the first cycle.
      * @param {string} source
+     * @param {Example | null} [example]  the example being loaded, for the Program panel's caption
      */
-    loadProgram(source) {
-      set({ source, stale: state.timeline !== null && source !== state.source, cycle: 0, playing: false });
+    loadProgram(source, example = null) {
+      set({ source, example, stale: state.timeline !== null && source !== state.source, cycle: 0, playing: false });
     },
 
     /** @param {number} maxCycles */

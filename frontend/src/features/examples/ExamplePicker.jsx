@@ -2,10 +2,23 @@ import { useEffect, useState } from "react";
 
 import { isAbortError } from "../../api/client.js";
 import { getExample, listExamples } from "../../api/endpoints.js";
-import { actions, DEFAULT_SOURCE } from "../../state/store.js";
+import { actions, DEFAULT_SOURCE, DEMO_EXAMPLE } from "../../state/store.js";
 import styles from "./ExamplePicker.module.css";
 
 const DEMO = "demo";
+
+/**
+ * The Program panel's caption: the loaded example's name and description.
+ * @param {{ example: import("../../state/store.js").Example }} props
+ */
+export function ExampleCaption({ example }) {
+  return (
+    <>
+      <span className="mono">{example.id}</span>
+      {example.description ? `: ${example.description}` : ""}
+    </>
+  );
+}
 
 /** Loads one of the backend's example programs (or the built-in demo) into the editor. */
 export default function ExamplePicker() {
@@ -26,12 +39,13 @@ export default function ExamplePicker() {
   /** @param {string} id */
   async function load(id) {
     if (id === DEMO) {
-      actions.loadProgram(DEFAULT_SOURCE);
+      actions.loadProgram(DEFAULT_SOURCE, DEMO_EXAMPLE);
       return;
     }
     setLoading(true);
     try {
-      actions.loadProgram((await getExample(id)).source);
+      const example = await getExample(id);
+      actions.loadProgram(example.source, { id: example.id, description: example.description });
     } catch {
       // Leave the editor as it is; the picker stays usable.
     } finally {
