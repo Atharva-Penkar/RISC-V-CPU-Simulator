@@ -1,0 +1,35 @@
+.tabs {
+  display: flex;
+}
+
+.tab {
+  padding: 2px var(--space-2);
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.tab + .tab {
+  border-left: none;
+}
+
+.tab[aria-selected="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.radix select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  padding: 1px var(--space-1);
+}
+
+
+.empty {
+  color: var(--ink-muted);
+  font-size: 14px;
+}

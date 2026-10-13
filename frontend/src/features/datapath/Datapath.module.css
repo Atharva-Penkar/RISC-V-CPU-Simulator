@@ -1,0 +1,126 @@
+.datapath {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.quiet {
+  color: var(--ink-muted);
+  font-size: 14px;
+}
+
+.stages {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 600px) {
+  .stages {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.slot {
+  position: relative;
+  min-width: 0;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 92px;
+  padding: var(--space-2);
+  border: 1px solid var(--ink);
+  background: var(--paper-raised);
+}
+
+.name {
+  font-weight: 600;
+}
+
+.body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.note {
+  margin-top: auto;
+  font-size: 11px;
+}
+
+.stalled {
+  border-color: var(--stall);
+  box-shadow: inset 0 0 0 1px var(--stall);
+}
+
+.stalled .note {
+  align-self: flex-start;
+  padding: 0 4px;
+  background: var(--stall);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.flushed {
+  border-style: dashed;
+  border-color: var(--flush);
+}
+
+.flushed .note {
+  color: var(--flush);
+  font-weight: 600;
+}
+
+.bubble {
+  border-style: dashed;
+  border-color: var(--rule);
+  color: var(--ink-muted);
+}
+
+.idle {
+  border-color: var(--rule);
+  color: var(--ink-muted);
+}
+
+/* The pipeline register between two stages: a bar in the gap. */
+.latch {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  right: calc(-1 * var(--space-3) / 2 - 2px);
+  width: 4px;
+  background: var(--ink);
+}
+
+@media (max-width: 600px) {
+  .latch {
+    display: none;
+  }
+}
+
+.signals {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-muted);
+}
+
+.forward {
+  color: var(--forward);
+}
+
+.stallText {
+  color: var(--stall);
+}
+
+.flushText {
+  color: var(--flush);
+}

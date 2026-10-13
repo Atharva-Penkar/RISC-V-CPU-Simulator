@@ -1,0 +1,138 @@
+/* Cells follow the portfolio's pipeline figure (figures.module.css): 12px mono, ink outlines, solid
+   signal-blue stalls with white bold text. */
+
+.empty {
+  color: var(--ink-muted);
+  font-size: 14px;
+}
+
+.scroller {
+  --label: 220px;
+  --column: 46px;
+  position: relative;
+  height: 100%;
+  min-height: 200px;
+  overflow: auto;
+}
+
+@media (max-width: 600px) {
+  .scroller {
+    --label: 150px;
+  }
+}
+
+.stale {
+  opacity: 0.55;
+}
+
+.chart {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  width: max-content;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: center;
+}
+
+.rowGroup {
+  display: contents;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 6px 0;
+  background: var(--paper-raised);
+  color: var(--ink-muted);
+}
+
+.corner {
+  left: 0;
+  z-index: 4;
+  text-align: left;
+}
+
+.cycle {
+  cursor: pointer;
+}
+
+.cycle:hover {
+  color: var(--ink);
+}
+
+.current {
+  color: var(--signal);
+  font-weight: 600;
+}
+
+/* The column of the cycle being viewed. */
+.now {
+  grid-row: 1 / -1;
+  z-index: 0;
+  margin: 0 -2px;
+  background: color-mix(in srgb, var(--signal) 9%, transparent);
+  pointer-events: none;
+}
+
+.label {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-right: var(--space-2);
+  background: var(--paper-raised);
+  text-align: left;
+}
+
+.squashedLabel {
+  color: var(--ink-muted);
+}
+
+.fate {
+  flex: none;
+  color: var(--flush);
+  font-size: 11px;
+}
+
+.cell {
+  position: relative;
+  z-index: 1;
+  padding: 10px 0;
+  border: 1px solid var(--ink);
+  background: var(--paper-raised);
+  cursor: pointer;
+}
+
+.cell:hover {
+  outline: 2px solid var(--signal);
+  outline-offset: -1px;
+}
+
+.stalled {
+  border-color: var(--stall);
+  background: var(--stall);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.squashed {
+  border-style: dashed;
+  border-color: var(--flush);
+  color: var(--flush);
+}
+
+.fault {
+  border-color: var(--fault);
+  background: var(--fault);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.future {
+  opacity: 0.3;
+}

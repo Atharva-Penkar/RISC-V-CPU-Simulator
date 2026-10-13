@@ -1,0 +1,44 @@
+.memory {
+  width: 100%;
+  border-collapse: collapse;
+  letter-spacing: 0;
+}
+
+.caption {
+  padding-bottom: var(--space-2);
+  text-align: left;
+  color: var(--ink-muted);
+}
+
+.memory th {
+  padding: 2px var(--space-1);
+  color: var(--ink-muted);
+  font-weight: 400;
+  text-align: right;
+}
+
+.memory thead th {
+  border-bottom: 1px solid var(--rule);
+}
+
+.word {
+  padding: 2px var(--space-1);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.zero {
+  color: var(--ink-muted);
+}
+
+.stored {
+  background: var(--changed);
+  box-shadow: inset 0 -2px 0 var(--ink);
+  color: var(--ink);
+}
+
+.loaded {
+  outline: 2px solid var(--signal);
+  outline-offset: -2px;
+  color: var(--ink);
+}

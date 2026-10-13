@@ -1,0 +1,9 @@
+.picker select {
+  max-width: 220px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  padding: 1px var(--space-1);
+}
+

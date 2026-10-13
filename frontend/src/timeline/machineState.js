@@ -93,3 +93,22 @@ export function changesAt(timeline, cycle) {
   if (record?.memory?.access === "store") memoryWords.add(record.memory.address & ~3);
   return { registers, memoryWords };
 }
+
+/** @type {WeakMap<Timeline, MachineState>} */
+const cursors = new WeakMap();
+
+/**
+ * The registers and memory at the end of `cycle`. Keeps one MachineState per timeline, so moving to a
+ * nearby cycle only replays the cycles in between.
+ * @param {Timeline} timeline
+ * @param {number} cycle
+ * @returns {MachineSnapshot}
+ */
+export function stateAt(timeline, cycle) {
+  let cursor = cursors.get(timeline);
+  if (!cursor) {
+    cursor = new MachineState(timeline);
+    cursors.set(timeline, cursor);
+  }
+  return cursor.seek(cycle).snapshot();
+}

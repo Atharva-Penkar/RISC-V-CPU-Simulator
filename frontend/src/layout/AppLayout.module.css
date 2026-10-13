@@ -53,7 +53,7 @@
 
 .editor { grid-area: editor; min-height: 320px; }
 .datapath { grid-area: datapath; min-height: 260px; }
-.timing { grid-area: timing; min-height: 260px; }
+.timing { grid-area: timing; min-height: 260px; max-height: 70vh; }
 .events { grid-area: events; min-height: 200px; }
 .machine { grid-area: machine; min-height: 200px; }
 .stats { grid-area: stats; }
@@ -78,12 +78,17 @@
   }
 
   .grid {
+    min-height: 0;
     grid-template-columns: minmax(0, 4fr) minmax(0, 3fr) minmax(0, 3fr);
     grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas:
       "editor   datapath datapath"
       "editor   timing   timing"
       "events   machine  stats";
+  }
+
+  .timing {
+    max-height: none;
   }
 
   .editor,

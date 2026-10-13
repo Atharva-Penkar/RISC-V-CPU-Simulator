@@ -5,8 +5,8 @@ The browser sends a program to the backend API (`../backend`), which assembles a
 returns a timeline of every cycle ([format](../docs/timeline-format.md)). The page is a pure function of that timeline
 and the current cycle: stepping, scrubbing and playback never re-run the simulator.
 
-> Status: the timeline model, API client, app state, page layout and playback controls are written. The editor,
-> timing chart, registers, memory, event log and statistics panels are placeholders, and the datapath is not drawn yet.
+> Status: every panel works. The pipeline panel is a simplified five-stage view (features/datapath) until the full
+> datapath diagram is drawn as an SVG.
 
 ## Planned layout
 
@@ -68,6 +68,8 @@ src/
     editor/            assembly editor, syntax, diagnostics, pipeline-stage gutter
     timing-chart/      rows = instructions, columns = cycles
     controls/          transport bar (with keyboard shortcuts) and scrubber
+    datapath/          the five stages this cycle (simplified until the datapath SVG)
+    machine/           registers and memory panel with tabs and number format
     registers/  memory/  event-log/  stats/  examples/
   components/          shared UI: Panel, InstructionChip
   layout/              the page grid

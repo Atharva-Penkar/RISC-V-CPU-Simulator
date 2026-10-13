@@ -39,6 +39,7 @@ loop:   add  x2, x2, x1         # x1 is forwarded from the instruction ahead
  * @property {number} cycle          cycle being viewed: 0 is before the first cycle, timeline.cycles.length the last
  * @property {boolean} playing
  * @property {number} speed          cycles per second while playing
+ * @property {import("../timeline/format.js").Radix} radix  how register and memory values are shown
  */
 
 /** @returns {AppState} */
@@ -55,6 +56,7 @@ function initialState() {
     cycle: 0,
     playing: false,
     speed: 2,
+    radix: "hex",
   };
 }
 
@@ -96,6 +98,14 @@ export function createAppStore(overrides = {}) {
     /** @param {string} source */
     setSource(source) {
       if (source !== state.source) set({ source, stale: state.timeline !== null });
+    },
+
+    /**
+     * Replaces the program, e.g. with an example, and goes back to the first cycle.
+     * @param {string} source
+     */
+    loadProgram(source) {
+      set({ source, stale: state.timeline !== null && source !== state.source, cycle: 0, playing: false });
     },
 
     /** @param {number} maxCycles */
@@ -183,6 +193,11 @@ export function createAppStore(overrides = {}) {
     /** @param {number} speed */
     setSpeed(speed) {
       set({ speed });
+    },
+
+    /** @param {import("../timeline/format.js").Radix} radix */
+    setRadix(radix) {
+      set({ radix });
     },
   };
 
