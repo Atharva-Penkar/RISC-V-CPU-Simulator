@@ -2,12 +2,16 @@
 
 An assembler and a **5-stage pipelined RISC-V (RV32IM) CPU** simulator written in C++20.
 
+**Try it in the browser: https://atharva-penkar.github.io/RISC-V-CPU-Simulator/**
+
 - `rvasm` turns RV32IM assembly into machine code and reports every error with its line and column.
 - `rvsim` runs a program on the pipeline, or on a single-cycle reference model (ISS), and prints the final
   registers and data memory. With `--json` it records every pipeline cycle as structured JSON for visualisation
   ([format](docs/timeline-format.md)).
 - `backend/` is a Node.js API that accepts programs from a web frontend, runs them on `rvsim` and returns the
   timeline JSON ([API](backend/README.md)).
+- `frontend/` is the React website that shows the pipeline cycle by cycle
+  ([live site](https://atharva-penkar.github.io/RISC-V-CPU-Simulator/), [frontend README](frontend/README.md)).
 
 ## Pipeline
 
