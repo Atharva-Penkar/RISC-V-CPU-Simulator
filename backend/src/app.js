@@ -1,5 +1,6 @@
 import compression from "compression";
 import express from "express";
+import { createRateLimits } from "./rateLimits.js";
 import { ApiError } from "./simulator.js";
 
 /** Reads and checks { source } from a request body. */
@@ -66,10 +67,13 @@ function readForwarding(body) {
  *   POST /api/assemble        { source } -> "rv-program" document
  *   POST /api/simulate        { source, maxCycles?, latencies?, forwarding? } -> "rv-timeline" document
  * Errors are { error: { code, message, details? } }; assembly errors are 422 with the diagnostics as details.
+ * Each client IP is rate limited (rateLimits.js): 429 RATE_LIMITED with a Retry-After header.
  */
 export function createApp({ config, simulator, examples }) {
   const app = express();
   app.disable("x-powered-by");
+  app.set("trust proxy", config.trustProxy);
+  const limits = createRateLimits(config.rateLimits);
   app.use(compression());   // timelines are repetitive JSON and shrink about tenfold
 
   app.use((req, res, next) => {
@@ -81,6 +85,10 @@ export function createApp({ config, simulator, examples }) {
   });
   // Room for JSON escaping on top of the source size limit; readSource enforces the real limit.
   app.use(express.json({ limit: config.maxSourceBytes * 2 + 1024 }));
+
+  // After the CORS middleware, so preflight OPTIONS requests are not counted.
+  if (limits.reads.length) app.get("/api/*path", ...limits.reads);
+  if (limits.runs.length) app.post(["/api/assemble", "/api/simulate"], ...limits.runs);
 
   app.get("/api/health", async (req, res) => {
     const available = await simulator.available();

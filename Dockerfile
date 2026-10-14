@@ -17,6 +17,7 @@ RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
 # Stage 2: the Node.js API with the two executables and the example programs.
 FROM node:22-bookworm-slim
 ENV NODE_ENV=production \
+    TRUST_PROXY=1 \
     RVSIM_PATH=/app/bin/rvsim \
     RVASM_PATH=/app/bin/rvasm \
     EXAMPLES_DIR=/app/examples

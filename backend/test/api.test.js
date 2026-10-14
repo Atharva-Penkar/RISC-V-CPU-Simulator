@@ -9,9 +9,10 @@ import { loadConfig } from "../src/config.js";
 import { loadExamples } from "../src/examples.js";
 import { Simulator } from "../src/simulator.js";
 
-/** Starts the API on a free port; returns { url, close }. */
+/** Starts the API on a free port; returns { url, close }. Rate limits are off unless overrides set them. */
 async function startServer(overrides = {}) {
-  const config = { ...loadConfig(), ...overrides };
+  const base = loadConfig();
+  const config = { ...base, rateLimits: { ...base.rateLimits, enabled: false }, ...overrides };
   const app = createApp({ config, simulator: new Simulator(config), examples: await loadExamples(config.examplesDir) });
   const server = await new Promise((resolve) => {
     const s = app.listen(0, () => resolve(s));
@@ -240,5 +241,67 @@ describe("simulator failures", () => {
     await server.close();
     assert.equal(status, 413);
     assert.equal(body.error.code, "OUTPUT_TOO_LARGE");
+  });
+});
+
+describe("rate limits", () => {
+  const limits = { enabled: true, runsPerMinute: 3, runsPerHour: 100, readsPerMinute: 5 };
+
+  test("runs over the limit get 429 RATE_LIMITED with Retry-After; preflights are not counted", async () => {
+    const server = await startServer({ rateLimits: limits });
+    try {
+      for (let i = 0; i < 3; i++) {
+        await fetch(`${server.url}/api/simulate`, { method: "OPTIONS" });
+        const { status } = await post(`${server.url}/api/simulate`, { source: "ebreak" });
+        assert.equal(status, 200, `run ${i + 1}`);
+      }
+      // assemble and simulate share the budget
+      const limited = await fetch(`${server.url}/api/assemble`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: "ebreak" }),
+      });
+      assert.equal(limited.status, 429);
+      assert.equal((await limited.json()).error.code, "RATE_LIMITED");
+      assert.ok(Number(limited.headers.get("retry-after")) > 0);
+      assert.match(limited.headers.get("ratelimit") ?? "", /"3-in-1min"; r=0/);
+      assert.equal(limited.headers.get("access-control-allow-origin"), "*", "the browser can read the error");
+      // reads have their own budget
+      assert.equal((await fetch(`${server.url}/api/health`)).status, 200);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("reads are limited separately", async () => {
+    const server = await startServer({ rateLimits: limits });
+    try {
+      for (let i = 0; i < 5; i++) assert.equal((await fetch(`${server.url}/api/examples`)).status, 200);
+      const limited = await fetch(`${server.url}/api/examples/fibonacci`);
+      assert.equal(limited.status, 429);
+      assert.equal((await post(`${server.url}/api/simulate`, { source: "ebreak" })).status, 200);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("behind a trusted proxy each forwarded client has its own budget; otherwise the header is ignored", async () => {
+    const tight = { ...limits, readsPerMinute: 1 };
+    const get = (url, ip) => fetch(`${url}/api/health`, { headers: { "X-Forwarded-For": ip } });
+    const proxied = await startServer({ rateLimits: tight, trustProxy: 1 });
+    try {
+      assert.equal((await get(proxied.url, "203.0.113.1")).status, 200);
+      assert.equal((await get(proxied.url, "203.0.113.2")).status, 200);
+      assert.equal((await get(proxied.url, "203.0.113.1")).status, 429);
+    } finally {
+      await proxied.close();
+    }
+    const direct = await startServer({ rateLimits: tight, trustProxy: 0 });
+    try {
+      assert.equal((await get(direct.url, "203.0.113.1")).status, 200);
+      assert.equal((await get(direct.url, "203.0.113.2")).status, 429, "a faked header does not reset the budget");
+    } finally {
+      await direct.close();
+    }
   });
 });

@@ -14,6 +14,17 @@ function integer(name, fallback) {
   return value;
 }
 
+/** A non-negative integer setting (0 allowed). */
+function count(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative integer, got "${raw}"`);
+  }
+  return value;
+}
+
 /** Settings read from the environment, with defaults for running from a repository checkout. */
 export function loadConfig() {
   return {
@@ -30,5 +41,15 @@ export function loadConfig() {
     runTimeoutMs: integer("RUN_TIMEOUT_MS", 10000),
     maxOutputBytes: integer("MAX_OUTPUT_BYTES", 32 * 1024 * 1024),
     maxConcurrentRuns: integer("MAX_CONCURRENT_RUNS", 4),
+    // Proxies in front of the server whose X-Forwarded-For can be trusted for the client IP. Cloud Run has
+    // one (the Dockerfile sets 1); locally there is none, and trusting the header would let anyone fake it.
+    trustProxy: count("TRUST_PROXY", 0),
+    // Per-IP limits; RATE_LIMITS=off turns them off.
+    rateLimits: {
+      enabled: process.env.RATE_LIMITS !== "off",
+      runsPerMinute: integer("RUNS_PER_MINUTE", 60),
+      runsPerHour: integer("RUNS_PER_HOUR", 1000),
+      readsPerMinute: integer("READS_PER_MINUTE", 300),
+    },
   };
 }

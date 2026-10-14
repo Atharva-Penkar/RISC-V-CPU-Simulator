@@ -33,6 +33,11 @@ Environment variables, all optional:
 | `RUN_TIMEOUT_MS` | `10000` | A run taking longer is killed. |
 | `MAX_OUTPUT_BYTES` | `33554432` | A run printing more JSON is killed. |
 | `MAX_CONCURRENT_RUNS` | `4` | Simulator processes at once; further requests wait. |
+| `RUNS_PER_MINUTE` | `60` | Per client IP: `POST /api/simulate` and `/api/assemble` together. |
+| `RUNS_PER_HOUR` | `1000` | Per client IP, the same requests over an hour. |
+| `READS_PER_MINUTE` | `300` | Per client IP: the `GET` endpoints. |
+| `RATE_LIMITS` | on | `off` turns the per-IP limits off. |
+| `TRUST_PROXY` | `0` | Proxies in front of the server whose `X-Forwarded-For` gives the client IP. The Dockerfile sets `1` for Cloud Run; leave `0` when nothing sits in front, or clients could fake their IP. |
 
 ## Endpoints
 
@@ -70,15 +75,20 @@ Every error is `{ "error": { "code", "message", "details"? } }`:
 
 | Status | `code` | When |
 | --- | --- | --- |
-| 400 | `INVALID_REQUEST`, `INVALID_JSON`, `INVALID_MAX_CYCLES` | Bad request body. |
+| 400 | `INVALID_REQUEST`, `INVALID_JSON`, `INVALID_MAX_CYCLES`, `INVALID_LATENCIES`, `INVALID_FORWARDING` | Bad request body. |
 | 404 | `NOT_FOUND` | Unknown route or example. |
 | 413 | `SOURCE_TOO_LARGE`, `OUTPUT_TOO_LARGE` | Program or result too large. |
 | 422 | `ASSEMBLY_FAILED` | `details.diagnostics` lists every error as `{ line, column, message }`. |
+| 429 | `RATE_LIMITED` | Too many requests from one IP (see `RUNS_PER_MINUTE` above). `Retry-After` gives the seconds to wait; the `RateLimit` header shows the remaining budget. |
 | 503 | `SIMULATOR_UNAVAILABLE` | `rvsim`/`rvasm` not built. |
 | 504 | `SIMULATION_TIMEOUT` | The run took longer than `RUN_TIMEOUT_MS`. |
 | 500 | `SIMULATOR_ERROR`, `INTERNAL_ERROR` | Unexpected simulator output. |
 
 Responses are gzip-compressed when the client accepts it; timelines shrink roughly tenfold.
+
+The rate limits are counted in each server instance's memory, so with Cloud Run's maximum of 2 instances a client
+can get at most twice a limit. They sit on top of the hard limits on every run: source size, cycle limit, timeout,
+output size and concurrent runs.
 
 ## Deploying to Google Cloud Run
 
